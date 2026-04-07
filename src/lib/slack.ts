@@ -14,11 +14,11 @@ interface EscalationParams {
 }
 
 /** Send an escalation message to Slack */
-export async function escalateToSlack(params: EscalationParams): Promise<boolean> {
+export async function escalateToSlack(params: EscalationParams): Promise<{ ok: boolean; error?: string }> {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) {
     console.error('SLACK_BOT_TOKEN not configured');
-    return false;
+    return { ok: false, error: 'SLACK_BOT_TOKEN not configured' };
   }
 
   const blocks = [
@@ -64,9 +64,12 @@ export async function escalateToSlack(params: EscalationParams): Promise<boolean
     });
 
     const data = await res.json();
-    return data.ok === true;
+    if (!data.ok) {
+      console.error('Slack API error:', data.error, data);
+    }
+    return data;
   } catch (err) {
     console.error('Slack escalation failed:', err);
-    return false;
+    return { ok: false, error: String(err) };
   }
 }

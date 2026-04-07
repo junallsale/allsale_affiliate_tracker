@@ -339,17 +339,25 @@ export default function EmailQueuePage() {
     if (status === 'escalated') {
       const draft = drafts.find(d => d.id === draftId);
       if (draft) {
-        await fetch('/api/emails/escalate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            reason: draft.classification || 'Manual escalation',
-            creatorName: draft.project_creator?.creator?.tiktok_handle || 'Unknown',
-            creatorEmail: draft.email_message?.from_email,
-            projectName: draft.project_creator?.project?.name,
-            emailSnippet: draft.email_message?.body_text,
-          }),
-        }).catch(() => {});
+        try {
+          const res = await fetch('/api/emails/escalate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              reason: draft.classification || 'Manual escalation',
+              creatorName: draft.project_creator?.creator?.tiktok_handle || 'Unknown',
+              creatorEmail: draft.email_message?.from_email,
+              projectName: draft.project_creator?.project?.name,
+              emailSnippet: draft.email_message?.body_text,
+            }),
+          });
+          const result = await res.json();
+          if (!result.ok) {
+            alert(`Slack escalation failed: ${result.error || 'Unknown error'}`);
+          }
+        } catch (err) {
+          alert(`Slack escalation failed: ${err}`);
+        }
       }
     }
 

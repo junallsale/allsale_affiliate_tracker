@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
-    const ok = await escalateToSlack({
+    const result = await escalateToSlack({
       reason: body.reason || 'Manual escalation',
       creatorName: body.creatorName || 'Unknown',
       creatorEmail: body.creatorEmail,
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
       adminLink: body.adminLink || `${process.env.NEXT_PUBLIC_APP_URL || ''}/admin/email-queue`,
     });
 
-    return NextResponse.json({ ok });
+    return NextResponse.json(result);
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
