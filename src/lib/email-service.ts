@@ -34,9 +34,10 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
   const { data: pc } = await supabase
     .from('project_creators')
     .select(`
-      id, unique_slug, contract_amount, commission_rate,
+      id, unique_slug, contract_amount, commission_rate, assigned_video_count,
       creator:creators(name, email, tiktok_handle),
-      project:projects(id, name, require_shipping_address, submission_deadline, brand:brands(name))
+      project:projects(id, name, require_shipping_address, submission_deadline, brand:brands(name)),
+      project_creator_products:project_creator_products(product:products(name, content_guide_url))
     `)
     .eq('id', params.projectCreatorId)
     .single();
@@ -60,6 +61,12 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://allsale-affiliate-tracker.vercel.app';
   const contractLink = `${baseUrl}/c/${pc.unique_slug}`;
 
+  // Product info
+  const products = (pc as any).project_creator_products || [];
+  const firstProduct = products[0]?.product;
+  const productName = firstProduct?.name || '';
+  const contentGuideUrl = firstProduct?.content_guide_url || '';
+
   // Check for sample invitation links
   let sampleLinkSection = '';
   if (project?.require_shipping_address === false) {
@@ -74,15 +81,24 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
 
     if (sampleLinks?.length) {
       const link = sampleLinks[0];
-      sampleLinkSection = `<p>Request your sample here: <a href="${link.url}">${link.label || 'Get Sample'}</a></p>`;
+      sampleLinkSection = `<li><strong>Sample invitation:</strong> <a href="${link.url}">${link.label || 'Request Sample'}</a></li>`;
     }
   }
+
+  // Content guide section
+  const contentGuideSection = contentGuideUrl
+    ? `<li><strong>Product brief:</strong> <a href="${contentGuideUrl}">Content Guide</a></li>`
+    : '';
 
   const variables: Record<string, string> = {
     creator_name: creator?.name || creator?.tiktok_handle || 'Creator',
     project_name: project?.name || '',
     brand_name: brand?.name || '',
     contract_link: contractLink,
+    contract_amount: String(pc.contract_amount || 0),
+    video_count: String((pc as any).assigned_video_count || 1),
+    product_name: productName,
+    content_guide_section: contentGuideSection,
     sample_link_section: sampleLinkSection,
     sender_name: '', // Will be filled by sender selection
     deadline_note: project?.submission_deadline

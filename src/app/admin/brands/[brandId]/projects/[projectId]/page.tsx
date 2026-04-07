@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send } from 'lucide-react';
 import Papa from 'papaparse';
+
+const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
 
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -2042,12 +2044,12 @@ export default function ProjectDetailPage() {
                     <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="h-9 mt-1 text-sm" />
                   </div>
                   <div>
-                    <Label className="text-sm font-medium">Body (HTML)</Label>
-                    <textarea
-                      value={emailBody}
-                      onChange={(e) => setEmailBody(e.target.value)}
-                      className="flex w-full rounded-md border px-3 py-2 text-sm bg-background mt-1 min-h-[200px] resize-y font-mono text-xs"
-                    />
+                    <Label className="text-sm font-medium">Body</Label>
+                    <div className="mt-1">
+                      <Suspense fallback={<div className="h-[200px] border rounded-md flex items-center justify-center text-muted-foreground text-sm">Loading editor...</div>}>
+                        <RichTextEditor value={emailBody} onChange={setEmailBody} placeholder="Write your email..." />
+                      </Suspense>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>

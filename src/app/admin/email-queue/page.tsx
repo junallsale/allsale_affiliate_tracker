@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
+
+const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
 import {
   Mail, Send, X, AlertTriangle, Check, Loader2, Search, ExternalLink, Plus, RefreshCw,
 } from 'lucide-react';
@@ -444,12 +446,11 @@ export default function EmailQueuePage() {
 
             <div>
               <label className="text-sm font-medium">Body</label>
-              <textarea
-                value={editBody}
-                onChange={(e) => setEditBody(e.target.value)}
-                className="flex w-full rounded-md border px-3 py-2 text-sm bg-background mt-1 min-h-[200px] resize-y"
-              />
-              <p className="text-xs text-muted-foreground mt-1">HTML supported. Edit the draft before sending.</p>
+              <div className="mt-1">
+                <Suspense fallback={<div className="h-[200px] border rounded-md flex items-center justify-center text-muted-foreground text-sm">Loading editor...</div>}>
+                  <RichTextEditor value={editBody} onChange={setEditBody} placeholder="Edit your reply..." />
+                </Suspense>
+              </div>
             </div>
           </div>
 
