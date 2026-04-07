@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface EmailAccount {
@@ -271,6 +272,7 @@ export default function EmailQueuePage() {
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -434,37 +436,59 @@ export default function EmailQueuePage() {
 
                           {/* Actions */}
                           <TableCell className="text-center">
-                            {d.status === 'pending' && (
-                              <div className="flex gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="h-7 text-xs"
-                                  onClick={() => openSendDialog(d)}
-                                >
-                                  <Send className="w-3 h-3 mr-1" /> Send
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs"
-                                  onClick={() => updateDraftStatus(d.id, 'dismissed')}
-                                >
-                                  <X className="w-3 h-3" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs text-red-600"
-                                  onClick={() => updateDraftStatus(d.id, 'escalated')}
-                                >
-                                  <AlertTriangle className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            )}
-                            {d.status === 'sent' && (
-                              <Check className="w-4 h-4 text-emerald-600 mx-auto" />
-                            )}
+                            <div className="flex gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
+                              {(d.status === 'pending' || d.status === 'escalated') && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      className="h-7 text-xs"
+                                      onClick={() => openSendDialog(d)}
+                                    >
+                                      <Send className="w-3 h-3 mr-1" /> Send
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Review and send this reply</TooltipContent>
+                                </Tooltip>
+                              )}
+                              {d.status === 'pending' && (
+                                <>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs"
+                                        onClick={() => updateDraftStatus(d.id, 'dismissed')}
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Dismiss — no reply needed</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs text-red-600"
+                                        onClick={() => updateDraftStatus(d.id, 'escalated')}
+                                      >
+                                        <AlertTriangle className="w-3 h-3" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Escalate to Slack for manual handling</TooltipContent>
+                                  </Tooltip>
+                                </>
+                              )}
+                              {d.status === 'sent' && (
+                                <Check className="w-4 h-4 text-emerald-600" />
+                              )}
+                              {d.status === 'dismissed' && (
+                                <span className="text-xs text-muted-foreground">dismissed</span>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
 
@@ -583,5 +607,6 @@ export default function EmailQueuePage() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }
