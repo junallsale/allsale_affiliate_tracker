@@ -87,31 +87,55 @@ export async function GET(req: NextRequest) {
         // Skip if it's our own sent email
         if (fromEmail === account.email.toLowerCase()) continue;
 
-        // Match sender email to a project_creator via creators table
+        // Match to a project_creator (3 strategies, in priority order)
         let pcMatch: any = null;
+        const pcSelect = 'id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))';
 
-        // 1. Match by creator email
-        const { data: creators } = await supabase
-          .from('creators')
-          .select('id')
-          .ilike('email', fromEmail)
-          .limit(1);
-
-        if (creators?.length) {
-          const { data: pcs } = await supabase
-            .from('project_creators')
-            .select('id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))')
-            .eq('creator_id', creators[0].id)
+        // 1. Match by Gmail thread ID — if we sent an outbound email in this thread, reuse its project_creator_id
+        if (email.threadId) {
+          const { data: threadMatch } = await supabase
+            .from('email_messages')
+            .select('project_creator_id')
+            .eq('gmail_thread_id', email.threadId)
+            .eq('direction', 'outbound')
+            .not('project_creator_id', 'is', null)
             .order('created_at', { ascending: false })
             .limit(1);
-          if (pcs?.length) pcMatch = pcs[0];
+
+          if (threadMatch?.length && threadMatch[0].project_creator_id) {
+            const { data: pcs } = await supabase
+              .from('project_creators')
+              .select(pcSelect)
+              .eq('id', threadMatch[0].project_creator_id)
+              .limit(1);
+            if (pcs?.length) pcMatch = pcs[0];
+          }
         }
 
-        // 2. Match by payment_email
+        // 2. Match by creator email
+        if (!pcMatch) {
+          const { data: creators } = await supabase
+            .from('creators')
+            .select('id')
+            .ilike('email', fromEmail)
+            .limit(1);
+
+          if (creators?.length) {
+            const { data: pcs } = await supabase
+              .from('project_creators')
+              .select(pcSelect)
+              .eq('creator_id', creators[0].id)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            if (pcs?.length) pcMatch = pcs[0];
+          }
+        }
+
+        // 3. Match by payment_email
         if (!pcMatch) {
           const { data: byPayment } = await supabase
             .from('project_creators')
-            .select('id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))')
+            .select(pcSelect)
             .ilike('payment_email', fromEmail)
             .order('created_at', { ascending: false })
             .limit(1);
