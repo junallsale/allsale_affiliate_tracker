@@ -86,7 +86,7 @@ export default function EmailQueuePage() {
       .select(`
         id, draft_subject, draft_body_html, classification, status, created_at, reviewed_at,
         email_message:email_messages(id, from_email, to_email, subject, body_text, received_at, gmail_thread_id),
-        project_creator:project_creators(id, unique_slug, creator:creators(name, tiktok_handle), project:projects(name, brand:brands(name)))
+        project_creator:project_creators!left(id, unique_slug, creator:creators!left(name, tiktok_handle), project:projects!left(name, brand:brands!left(name)))
       `)
       .order('created_at', { ascending: false })
       .limit(100);
