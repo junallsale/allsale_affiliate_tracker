@@ -39,6 +39,7 @@ interface EmailDraft {
     body_text: string;
     received_at: string;
     gmail_thread_id: string;
+    message_id_header: string | null;
   } | null;
   project_creator: {
     id: string;
@@ -59,12 +60,13 @@ const classificationColors: Record<string, string> = {
   other: 'bg-muted text-muted-foreground',
 };
 
-function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, onSent }: {
+function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, inReplyTo, onSent }: {
   draft: EmailDraft;
   accounts: EmailAccount[];
   defaultAccountId: string;
   toEmail: string;
   threadId?: string;
+  inReplyTo?: string | null;
   onSent: () => void;
 }) {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
@@ -88,6 +90,7 @@ function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, on
           bodyHtml: body,
           projectCreatorId: draft.project_creator?.id,
           threadId,
+          inReplyTo: inReplyTo || undefined,
         }),
       });
       if (res.ok) {
@@ -195,7 +198,7 @@ export default function EmailQueuePage() {
       if (d.email_message_id) {
         const { data: em } = await supabase
           .from('email_messages')
-          .select('id, from_email, to_email, subject, body_text, received_at, gmail_thread_id')
+          .select('id, from_email, to_email, subject, body_text, received_at, gmail_thread_id, message_id_header')
           .eq('id', d.email_message_id)
           .single();
         emailMessage = em;
@@ -281,7 +284,12 @@ export default function EmailQueuePage() {
 
   const openSendDialog = (draft: EmailDraft) => {
     setSendDraft(draft);
-    setEditSubject(draft.draft_subject || '');
+    // Ensure "Re: " prefix for replies
+    let subj = draft.draft_subject || '';
+    if (draft.email_message && !subj.toLowerCase().startsWith('re:')) {
+      subj = `Re: ${draft.email_message.subject}`;
+    }
+    setEditSubject(subj);
     setEditBody(draft.draft_body_html || '');
   };
 
@@ -301,6 +309,7 @@ export default function EmailQueuePage() {
           bodyHtml: editBody,
           projectCreatorId: sendDraft.project_creator?.id,
           threadId: sendDraft.email_message?.gmail_thread_id,
+          inReplyTo: sendDraft.email_message?.message_id_header || undefined,
         }),
       });
 
@@ -614,6 +623,7 @@ export default function EmailQueuePage() {
                                       defaultAccountId={sendAccountId}
                                       toEmail={em?.from_email || ''}
                                       threadId={em?.gmail_thread_id}
+                                      inReplyTo={em?.message_id_header}
                                       onSent={() => fetchData()}
                                     />
                                   ) : (

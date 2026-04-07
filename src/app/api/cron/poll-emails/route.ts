@@ -160,6 +160,7 @@ export async function GET(req: NextRequest) {
             body_text: email.bodyText,
             body_html: email.bodyHtml,
             classification,
+            message_id_header: email.messageIdHeader || null,
             received_at: email.date ? new Date(email.date).toISOString() : new Date().toISOString(),
           })
           .select('id')
