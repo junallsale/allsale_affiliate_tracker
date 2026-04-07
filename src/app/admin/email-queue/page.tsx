@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
 
 const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
 import {
-  Mail, Send, X, AlertTriangle, Check, Loader2, Search, ExternalLink, Plus, RefreshCw, Inbox,
+  Mail, Send, X, AlertTriangle, Check, Loader2, Search, ExternalLink, Plus, RefreshCw, Inbox, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -65,6 +65,9 @@ export default function EmailQueuePage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   const [search, setSearch] = useState('');
+
+  // Expanded row
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Polling
   const [polling, setPolling] = useState(false);
@@ -359,101 +362,147 @@ export default function EmailQueuePage() {
                   filtered.map(d => {
                     const pc = d.project_creator;
                     const em = d.email_message;
+                    const isExpanded = expandedId === d.id;
                     return (
-                      <TableRow key={d.id}>
-                        {/* Creator */}
-                        <TableCell>
-                          <div className="text-sm font-medium">
-                            @{pc?.creator?.tiktok_handle || 'Unknown'}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {pc?.project?.brand?.name} / {pc?.project?.name}
-                          </div>
-                        </TableCell>
-
-                        {/* Classification */}
-                        <TableCell>
-                          <span className={cn(
-                            'px-2 py-0.5 rounded text-xs font-medium',
-                            classificationColors[d.classification || 'other'] || classificationColors.other
-                          )}>
-                            {(d.classification || 'other').replace(/_/g, ' ')}
-                          </span>
-                        </TableCell>
-
-                        {/* Incoming Email */}
-                        <TableCell>
-                          {em ? (
-                            <div>
-                              <div className="text-xs font-medium truncate max-w-[250px]">{em.subject}</div>
-                              <div className="text-xs text-muted-foreground truncate max-w-[250px]">
-                                {em.body_text?.slice(0, 100)}
+                      <React.Fragment key={d.id}>
+                        <TableRow
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setExpandedId(isExpanded ? null : d.id)}
+                        >
+                          {/* Creator */}
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                              <div>
+                                <div className="text-sm font-medium">
+                                  @{pc?.creator?.tiktok_handle || 'Unknown'}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {pc?.project?.brand?.name} / {pc?.project?.name}
+                                </div>
                               </div>
                             </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Outbound draft</span>
-                          )}
-                        </TableCell>
+                          </TableCell>
 
-                        {/* Draft Reply */}
-                        <TableCell>
-                          <div className="text-xs font-medium truncate max-w-[250px]">{d.draft_subject}</div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[250px]">
-                            {d.draft_body_html?.replace(/<[^>]+>/g, '').slice(0, 100)}
-                          </div>
-                        </TableCell>
+                          {/* Classification */}
+                          <TableCell>
+                            <span className={cn(
+                              'px-2 py-0.5 rounded text-xs font-medium',
+                              classificationColors[d.classification || 'other'] || classificationColors.other
+                            )}>
+                              {(d.classification || 'other').replace(/_/g, ' ')}
+                            </span>
+                          </TableCell>
 
-                        {/* Status */}
-                        <TableCell>
-                          <Badge variant={
-                            d.status === 'pending' ? 'default' :
-                            d.status === 'sent' ? 'secondary' :
-                            d.status === 'escalated' ? 'destructive' : 'outline'
-                          } className="text-xs">
-                            {d.status}
-                          </Badge>
-                        </TableCell>
+                          {/* Incoming Email */}
+                          <TableCell>
+                            {em ? (
+                              <div>
+                                <div className="text-xs font-medium truncate max-w-[250px]">{em.subject}</div>
+                                <div className="text-xs text-muted-foreground truncate max-w-[250px]">
+                                  {em.body_text?.slice(0, 100)}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">Outbound draft</span>
+                            )}
+                          </TableCell>
 
-                        {/* Time */}
-                        <TableCell className="text-xs text-muted-foreground">
-                          {new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </TableCell>
-
-                        {/* Actions */}
-                        <TableCell className="text-center">
-                          {d.status === 'pending' && (
-                            <div className="flex gap-1 justify-center">
-                              <Button
-                                size="sm"
-                                variant="default"
-                                className="h-7 text-xs"
-                                onClick={() => openSendDialog(d)}
-                              >
-                                <Send className="w-3 h-3 mr-1" /> Send
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => updateDraftStatus(d.id, 'dismissed')}
-                              >
-                                <X className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs text-red-600"
-                                onClick={() => updateDraftStatus(d.id, 'escalated')}
-                              >
-                                <AlertTriangle className="w-3 h-3" />
-                              </Button>
+                          {/* Draft Reply */}
+                          <TableCell>
+                            <div className="text-xs font-medium truncate max-w-[250px]">{d.draft_subject}</div>
+                            <div className="text-xs text-muted-foreground truncate max-w-[250px]">
+                              {d.draft_body_html?.replace(/<[^>]+>/g, '').slice(0, 100)}
                             </div>
-                          )}
-                          {d.status === 'sent' && (
-                            <Check className="w-4 h-4 text-emerald-600 mx-auto" />
-                          )}
-                        </TableCell>
-                      </TableRow>
+                          </TableCell>
+
+                          {/* Status */}
+                          <TableCell>
+                            <Badge variant={
+                              d.status === 'pending' ? 'default' :
+                              d.status === 'sent' ? 'secondary' :
+                              d.status === 'escalated' ? 'destructive' : 'outline'
+                            } className="text-xs">
+                              {d.status}
+                            </Badge>
+                          </TableCell>
+
+                          {/* Time */}
+                          <TableCell className="text-xs text-muted-foreground">
+                            {new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </TableCell>
+
+                          {/* Actions */}
+                          <TableCell className="text-center">
+                            {d.status === 'pending' && (
+                              <div className="flex gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="h-7 text-xs"
+                                  onClick={() => openSendDialog(d)}
+                                >
+                                  <Send className="w-3 h-3 mr-1" /> Send
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => updateDraftStatus(d.id, 'dismissed')}
+                                >
+                                  <X className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs text-red-600"
+                                  onClick={() => updateDraftStatus(d.id, 'escalated')}
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            )}
+                            {d.status === 'sent' && (
+                              <Check className="w-4 h-4 text-emerald-600 mx-auto" />
+                            )}
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Expanded Detail Row */}
+                        {isExpanded && (
+                          <TableRow className="bg-muted/30 hover:bg-muted/30">
+                            <TableCell colSpan={7} className="p-0">
+                              <div className="grid grid-cols-2 gap-4 p-4">
+                                {/* Incoming Email */}
+                                <div className="border rounded-lg p-4 bg-background">
+                                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Incoming Email</h4>
+                                  {em ? (
+                                    <>
+                                      <div className="text-xs text-muted-foreground mb-1">From: {em.from_email}</div>
+                                      <div className="text-sm font-medium mb-2">{em.subject}</div>
+                                      <div className="text-sm whitespace-pre-wrap border-t pt-2 max-h-[300px] overflow-y-auto">
+                                        {em.body_text || <span className="text-muted-foreground italic">No text content</span>}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground italic">No incoming email — this is an outbound draft</p>
+                                  )}
+                                </div>
+
+                                {/* Draft Reply */}
+                                <div className="border rounded-lg p-4 bg-background">
+                                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Draft Reply</h4>
+                                  <div className="text-sm font-medium mb-2">{d.draft_subject}</div>
+                                  <div
+                                    className="text-sm border-t pt-2 max-h-[300px] overflow-y-auto prose prose-sm"
+                                    dangerouslySetInnerHTML={{ __html: d.draft_body_html || '' }}
+                                  />
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 )}
