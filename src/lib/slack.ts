@@ -21,33 +21,37 @@ export async function escalateToSlack(params: EscalationParams): Promise<{ ok: b
     return { ok: false, error: 'SLACK_BOT_TOKEN not configured' };
   }
 
-  const blocks = [
+  const blocks: any[] = [
     {
-      type: 'header',
-      text: { type: 'plain_text', text: `⚠️ Escalation: ${params.reason}` },
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*⚠️ Escalation: ${params.reason}*` },
     },
     {
       type: 'section',
-      fields: [
-        { type: 'mrkdwn', text: `*Creator:*\n${params.creatorName}` },
-        { type: 'mrkdwn', text: `*Email:*\n${params.creatorEmail || 'N/A'}` },
-        ...(params.projectName ? [{ type: 'mrkdwn', text: `*Project:*\n${params.projectName}` }] : []),
-      ],
+      text: {
+        type: 'mrkdwn',
+        text: [
+          `*Creator:* ${params.creatorName}`,
+          `*Email:* ${params.creatorEmail || 'N/A'}`,
+          params.projectName ? `*Project:* ${params.projectName}` : null,
+        ].filter(Boolean).join('\n'),
+      },
     },
-    ...(params.emailSnippet ? [{
-      type: 'section',
-      text: { type: 'mrkdwn', text: `*Email Snippet:*\n>${params.emailSnippet.slice(0, 300)}` },
-    }] : []),
-    ...(params.adminLink ? [{
-      type: 'actions',
-      elements: [{
-        type: 'button',
-        text: { type: 'plain_text', text: 'View in Admin' },
-        url: params.adminLink,
-        action_id: 'view_admin',
-      }],
-    }] : []),
   ];
+
+  if (params.emailSnippet) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Email Snippet:*\n>${params.emailSnippet.slice(0, 300).replace(/\n/g, '\n>')}` },
+    });
+  }
+
+  if (params.adminLink) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `<${params.adminLink}|View in Admin>` },
+    });
+  }
 
   try {
     const res = await fetch('https://slack.com/api/chat.postMessage', {
