@@ -105,6 +105,12 @@ export default function ProjectDetailPage() {
   const [refreshingStats, setRefreshingStats] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
 
+  // Welcome template dialog
+  const [showWelcomeTemplate, setShowWelcomeTemplate] = useState(false);
+  const [welcomeSubject, setWelcomeSubject] = useState('');
+  const [welcomeBody, setWelcomeBody] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
   // Send email dialog
   const [emailTarget, setEmailTarget] = useState<PCWithDetails | null>(null);
   const [emailAccounts, setEmailAccounts] = useState<{ id: string; email: string }[]>([]);
@@ -281,6 +287,46 @@ export default function ProjectDetailPage() {
     if (res.ok) {
       setSampleLinks(prev => prev.filter(l => l.id !== linkId));
     }
+  };
+
+  // Load welcome template when dialog opens
+  useEffect(() => {
+    if (showWelcomeTemplate && project) {
+      const p = project as any;
+      if (p.welcome_email_subject) {
+        setWelcomeSubject(p.welcome_email_subject);
+        setWelcomeBody(p.welcome_email_body || '');
+      } else {
+        // Load default template
+        (async () => {
+          const { data } = await supabase.from('email_templates').select('subject, body_html').eq('slug', 'confirmed_welcome').single();
+          if (data) { setWelcomeSubject(data.subject); setWelcomeBody(data.body_html); }
+        })();
+      }
+    }
+  }, [showWelcomeTemplate, project, supabase]);
+
+  const saveWelcomeTemplate = async () => {
+    if (!project) return;
+    setSavingTemplate(true);
+    const { error } = await supabase.from('projects').update({
+      welcome_email_subject: welcomeSubject || null,
+      welcome_email_body: welcomeBody || null,
+    }).eq('id', project.id);
+    if (!error) {
+      setProject(prev => prev ? { ...prev, welcome_email_subject: welcomeSubject, welcome_email_body: welcomeBody } as any : prev);
+      setShowWelcomeTemplate(false);
+    }
+    setSavingTemplate(false);
+  };
+
+  const resetWelcomeTemplate = async () => {
+    if (!project) return;
+    setSavingTemplate(true);
+    await supabase.from('projects').update({ welcome_email_subject: null, welcome_email_body: null }).eq('id', project.id);
+    setProject(prev => prev ? { ...prev, welcome_email_subject: null, welcome_email_body: null } as any : prev);
+    setShowWelcomeTemplate(false);
+    setSavingTemplate(false);
   };
 
   const handleAddCreator = async () => {
@@ -857,6 +903,19 @@ export default function ProjectDetailPage() {
                 >
                   <Package className="w-3 h-3 inline mr-1" />
                   {(project as any).require_shipping_address ? 'Shipping Address: ON' : 'Shipping Address: OFF'}
+                </button>
+                {/* Welcome email template override */}
+                <button
+                  className={cn(
+                    'mt-1 text-xs px-2 py-0.5 rounded-full border transition-colors',
+                    (project as any).welcome_email_subject
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                      : 'border-muted-foreground/20 text-muted-foreground hover:border-muted-foreground/40'
+                  )}
+                  onClick={() => setShowWelcomeTemplate(true)}
+                >
+                  <Mail className="w-3 h-3 inline mr-1" />
+                  {(project as any).welcome_email_subject ? 'Custom Email Template' : 'Set Email Template'}
                 </button>
               </div>
             </div>
@@ -1991,6 +2050,44 @@ export default function ProjectDetailPage() {
                 {addingSampleLink ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Add Link
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Welcome Email Template Dialog */}
+        <Dialog open={showWelcomeTemplate} onOpenChange={setShowWelcomeTemplate}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Welcome Email Template</DialogTitle>
+              <DialogDescription>
+                Customize the first email sent to creators for this project. Use {'{{variables}}'} like: creator_name, brand_name, contract_amount, video_count, product_name, contract_link, sample_link_section, content_guide_section, sender_name
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Subject</Label>
+                <Input value={welcomeSubject} onChange={(e) => setWelcomeSubject(e.target.value)} className="h-9 mt-1 text-sm" />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Body</Label>
+                <div className="mt-1">
+                  <Suspense fallback={<div className="h-[200px] border rounded-md flex items-center justify-center text-muted-foreground text-sm">Loading editor...</div>}>
+                    <RichTextEditor value={welcomeBody} onChange={setWelcomeBody} placeholder="Write your template..." />
+                  </Suspense>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="flex justify-between">
+              <Button variant="ghost" size="sm" className="text-red-600" onClick={resetWelcomeTemplate} disabled={savingTemplate}>
+                Reset to Default
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowWelcomeTemplate(false)}>Cancel</Button>
+                <Button onClick={saveWelcomeTemplate} disabled={savingTemplate}>
+                  {savingTemplate ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Save Template
+                </Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>

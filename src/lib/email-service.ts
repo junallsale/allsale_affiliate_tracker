@@ -26,6 +26,30 @@ interface ComposeResult {
   variables: Record<string, string>;
 }
 
+/** Fetch all active sample links for a project as HTML list items */
+async function getSampleLinksHtml(supabase: ReturnType<typeof getServiceClient>, projectId: string): Promise<string> {
+  const { data: sampleLinks } = await supabase
+    .from('sample_invitation_links')
+    .select('url, label')
+    .eq('project_id', projectId)
+    .eq('is_active', true)
+    .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+    .order('created_at', { ascending: true });
+
+  if (!sampleLinks?.length) return '';
+
+  if (sampleLinks.length === 1) {
+    const link = sampleLinks[0];
+    return ` <a href="${link.url}">${link.label || 'Request Sample'}</a>`;
+  }
+
+  // Multiple links
+  const items = sampleLinks
+    .map(link => `<li><a href="${link.url}">${link.label || link.url}</a></li>`)
+    .join('');
+  return `<ul>${items}</ul>`;
+}
+
 /** Compose an email draft without sending */
 export async function composeEmail(params: ComposeParams): Promise<ComposeResult> {
   const supabase = getServiceClient();
@@ -34,9 +58,9 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
   const { data: pc } = await supabase
     .from('project_creators')
     .select(`
-      id, unique_slug, contract_amount, commission_rate, assigned_video_count,
+      id, unique_slug, contract_amount, commission_rate, assigned_video_count, advance_payment,
       creator:creators(name, email, tiktok_handle),
-      project:projects(id, name, require_shipping_address, submission_deadline, brand:brands(name)),
+      project:projects(id, name, require_shipping_address, submission_deadline, welcome_email_subject, welcome_email_body, brand:brands(name)),
       project_creator_products:project_creator_products(product:products(name, content_guide_url))
     `)
     .eq('id', params.projectCreatorId)
@@ -48,14 +72,23 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
   const project = pc.project as any;
   const brand = project?.brand as any;
 
-  // Fetch template
-  const { data: template } = await supabase
-    .from('email_templates')
-    .select('subject, body_html')
-    .eq('slug', params.templateSlug)
-    .single();
+  // Check for project-level template override (only for confirmed_welcome)
+  let templateSubject: string;
+  let templateBody: string;
 
-  if (!template) throw new Error(`Template '${params.templateSlug}' not found`);
+  if (params.templateSlug === 'confirmed_welcome' && project?.welcome_email_subject && project?.welcome_email_body) {
+    templateSubject = project.welcome_email_subject;
+    templateBody = project.welcome_email_body;
+  } else {
+    const { data: template } = await supabase
+      .from('email_templates')
+      .select('subject, body_html')
+      .eq('slug', params.templateSlug)
+      .single();
+    if (!template) throw new Error(`Template '${params.templateSlug}' not found`);
+    templateSubject = template.subject;
+    templateBody = template.body_html;
+  }
 
   // Build contract link
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://allsale-affiliate-tracker.vercel.app';
@@ -67,27 +100,31 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
   const productName = firstProduct?.name || '';
   const contentGuideUrl = firstProduct?.content_guide_url || '';
 
-  // Check for sample invitation links
+  // All sample invitation links (not just 1)
   let sampleLinkSection = '';
-  if (project?.require_shipping_address === false) {
-    const { data: sampleLinks } = await supabase
-      .from('sample_invitation_links')
-      .select('url, label')
-      .eq('project_id', project.id)
-      .eq('is_active', true)
-      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
-      .order('created_at', { ascending: true })
-      .limit(1);
-
-    if (sampleLinks?.length) {
-      const link = sampleLinks[0];
-      sampleLinkSection = `<li><strong>Sample invitation:</strong> <a href="${link.url}">${link.label || 'Request Sample'}</a></li>`;
+  let sampleLinksSection = '';
+  if (project && project.require_shipping_address === false) {
+    const linksHtml = await getSampleLinksHtml(supabase, project.id);
+    if (linksHtml) {
+      sampleLinkSection = `<li><strong>Sample invitation:</strong>${linksHtml}</li>`;
+      sampleLinksSection = linksHtml;
     }
   }
 
   // Content guide section
   const contentGuideSection = contentGuideUrl
     ? `<li><strong>Product brief:</strong> <a href="${contentGuideUrl}">Content Guide</a></li>`
+    : '';
+
+  // Advance payment section
+  const advancePayment = (pc as any).advance_payment || 0;
+  const advancePaymentSection = advancePayment > 0
+    ? `<li><strong>Advance payment:</strong> $${advancePayment} will be processed within 1 business day after signing</li>`
+    : '';
+
+  // Deadline section
+  const deadlineSection = project?.submission_deadline
+    ? `<p><strong>Submission deadline:</strong> ${new Date(project.submission_deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>`
     : '';
 
   const variables: Record<string, string> = {
@@ -99,7 +136,11 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
     video_count: String((pc as any).assigned_video_count || 1),
     product_name: productName,
     content_guide_section: contentGuideSection,
+    content_guide_link: contentGuideUrl,
     sample_link_section: sampleLinkSection,
+    sample_links_section: sampleLinksSection,
+    advance_payment_section: advancePaymentSection,
+    deadline_section: deadlineSection,
     sender_name: '', // Will be filled by sender selection
     deadline_note: project?.submission_deadline
       ? `Your submission deadline is ${new Date(project.submission_deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`
@@ -108,8 +149,8 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
   };
 
   return {
-    subject: renderTemplate(template.subject, variables),
-    bodyHtml: renderTemplate(template.body_html, variables),
+    subject: renderTemplate(templateSubject, variables),
+    bodyHtml: renderTemplate(templateBody, variables),
     toEmail: creator?.email || '',
     creatorName: variables.creator_name,
     variables,

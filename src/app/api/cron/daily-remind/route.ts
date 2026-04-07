@@ -21,7 +21,7 @@ function verifyCron(req: NextRequest): boolean {
 
 export const maxDuration = 120;
 
-/** GET /api/cron/daily-remind — Create reminder drafts + escalate 7-day no-reply */
+/** GET /api/cron/daily-remind — Create reminder drafts + escalate */
 export async function GET(req: NextRequest) {
   if (!verifyCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -37,9 +37,9 @@ export async function GET(req: NextRequest) {
   const { data: pcs } = await supabase
     .from('project_creators')
     .select(`
-      id, unique_slug, signed_at, created_at, contract_amount,
+      id, unique_slug, signed_at, created_at, contract_amount, advance_payment,
       creator:creators(name, email, tiktok_handle),
-      project:projects!inner(id, name, status, submission_deadline, brand:brands(name)),
+      project:projects!inner(id, name, status, submission_deadline, require_shipping_address, brand:brands(name)),
       videos(id)
     `)
     .eq('project.status', 'active')
@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   let remindSign = 0;
+  let remindPostSign = 0;
   let remindPost = 0;
   let escalated = 0;
 
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
     const brand = project?.brand as any;
     const videos = (pc.videos || []) as any[];
     const createdAt = new Date(pc.created_at);
+    const signedAt = pc.signed_at ? new Date(pc.signed_at) : null;
 
     // Skip if created less than 1 day ago
     if (createdAt > oneDayAgo) continue;
@@ -74,14 +76,13 @@ export async function GET(req: NextRequest) {
 
     if (existingDrafts?.length) continue;
 
-    // Case 1: Contract not signed + created > 1 day ago
-    if (!pc.signed_at && createdAt < oneDayAgo) {
+    // ── Case 1: Contract not signed ──
+    if (!pc.signed_at) {
       try {
         const draft = await composeEmail({
           projectCreatorId: pc.id,
           templateSlug: 'remind_sign_contract',
         });
-
         await supabase.from('email_drafts').insert({
           project_creator_id: pc.id,
           draft_subject: draft.subject,
@@ -94,14 +95,64 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    // Case 2: Signed but no videos + created > 3 days ago
-    if (pc.signed_at && videos.length === 0 && createdAt < threeDaysAgo) {
+    // ── Case 2: Signed + shipping ON → escalate for direct shipping ──
+    if (signedAt && project?.require_shipping_address === true) {
+      const { data: recentEsc } = await supabase
+        .from('email_messages')
+        .select('id')
+        .eq('project_creator_id', pc.id)
+        .eq('escalation_reason', 'signed_shipping_on')
+        .limit(1);
+
+      if (!recentEsc?.length) {
+        await escalateToSlack({
+          reason: 'Signed + Shipping ON — Direct shipping needed',
+          creatorName: creator?.tiktok_handle || creator?.name || 'Unknown',
+          creatorEmail: creator?.email,
+          projectName: `${brand?.name} / ${project?.name}`,
+          adminLink: `${process.env.NEXT_PUBLIC_APP_URL || ''}/admin/email-queue`,
+        });
+        await supabase.from('email_messages').insert({
+          project_creator_id: pc.id,
+          direction: 'inbound',
+          from_email: creator?.email || 'system',
+          to_email: 'system',
+          subject: '[System] Signed + Shipping ON escalation',
+          escalated: true,
+          escalation_reason: 'signed_shipping_on',
+          received_at: now.toISOString(),
+        });
+        escalated++;
+      }
+      continue;
+    }
+
+    // ── Case 3: Signed + shipping OFF + recently signed (within 3 days) → post-sign follow-up ──
+    if (signedAt && signedAt > threeDaysAgo && videos.length === 0) {
       try {
         const draft = await composeEmail({
           projectCreatorId: pc.id,
-          templateSlug: 'remind_post_video',
+          templateSlug: 'post_sign_shipping_off',
         });
+        await supabase.from('email_drafts').insert({
+          project_creator_id: pc.id,
+          draft_subject: draft.subject,
+          draft_body_html: draft.bodyHtml,
+          classification: 'reminder',
+          status: 'pending',
+        });
+        remindPostSign++;
+      } catch {}
+      continue;
+    }
 
+    // ── Case 4: Signed + no videos + signed > 3 days ago → posting reminder ──
+    if (signedAt && signedAt < threeDaysAgo && videos.length === 0) {
+      try {
+        const draft = await composeEmail({
+          projectCreatorId: pc.id,
+          templateSlug: 'remind_post_video_v2',
+        });
         await supabase.from('email_drafts').insert({
           project_creator_id: pc.id,
           draft_subject: draft.subject,
@@ -113,7 +164,7 @@ export async function GET(req: NextRequest) {
       } catch {}
     }
 
-    // Case 3: 7+ days no reply — escalate
+    // ── Case 5: 7+ days no reply → escalate ──
     const { data: lastInbound } = await supabase
       .from('email_messages')
       .select('received_at')
@@ -122,11 +173,8 @@ export async function GET(req: NextRequest) {
       .order('received_at', { ascending: false })
       .limit(1);
 
-    const lastReply = lastInbound?.[0]?.received_at
-      ? new Date(lastInbound[0].received_at)
-      : null;
+    const lastReply = lastInbound?.[0]?.received_at ? new Date(lastInbound[0].received_at) : null;
 
-    // Check if there's been any outbound email sent
     const { data: lastOutbound } = await supabase
       .from('email_messages')
       .select('sent_at')
@@ -137,13 +185,11 @@ export async function GET(req: NextRequest) {
 
     const hasOutbound = lastOutbound && lastOutbound.length > 0;
 
-    // Escalate if: we've sent email, no reply for 7 days (or no reply ever and created > 7 days)
     if (hasOutbound) {
       const noReplyFor7Days = !lastReply && createdAt < sevenDaysAgo;
       const lastReplyOlderThan7Days = lastReply && lastReply < sevenDaysAgo;
 
       if (noReplyFor7Days || lastReplyOlderThan7Days) {
-        // Check if already escalated recently
         const { data: recentEscalation } = await supabase
           .from('email_messages')
           .select('id')
@@ -161,8 +207,6 @@ export async function GET(req: NextRequest) {
             projectName: `${brand?.name} / ${project?.name}`,
             adminLink: `${process.env.NEXT_PUBLIC_APP_URL || ''}/admin/email-queue`,
           });
-
-          // Record escalation
           await supabase.from('email_messages').insert({
             project_creator_id: pc.id,
             direction: 'inbound',
@@ -182,6 +226,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     remind_sign: remindSign,
+    remind_post_sign: remindPostSign,
     remind_post: remindPost,
     escalated,
   });
