@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
       inReplyTo,
     });
 
-    // Auto-check contract_sent if this is the first outbound email with a contract link
-    if (projectCreatorId && bodyHtml.includes('/c/')) {
+    // Auto-check contract_sent on first outbound email for this project_creator
+    if (projectCreatorId) {
       const db = getServiceClient();
       await db
         .from('project_creators')
