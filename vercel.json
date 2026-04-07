@@ -2,6 +2,22 @@
   "functions": {
     "src/app/api/videos/refresh/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/cron/poll-emails/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/cron/daily-remind/route.ts": {
+      "maxDuration": 120
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/poll-emails",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-remind",
+      "schedule": "0 14 * * *"
+    }
+  ]
 }
