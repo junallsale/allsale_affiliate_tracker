@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, Users, LogOut, Database, Banknote, Star, X, ClipboardCheck, Calculator, UserCog, Menu, DollarSign, Bell, Check } from 'lucide-react';
+import { Building2, Users, LogOut, Database, Banknote, Star, X, ClipboardCheck, Calculator, UserCog, Menu, DollarSign, Bell, Check, Mail } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -18,6 +18,7 @@ const adminNavLinks = [
   { label: 'Creators', href: '/admin/creators', icon: Users },
   { label: 'Checklist', href: '/admin/checklist', icon: ClipboardCheck },
   { label: 'Pricing', href: '/admin/pricing', icon: Calculator },
+  { label: 'Email Queue', href: '/admin/email-queue', icon: Mail },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

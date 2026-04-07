@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send } from 'lucide-react';
 import Papa from 'papaparse';
 
 import { Button } from '@/components/ui/button';
@@ -103,6 +103,22 @@ export default function ProjectDetailPage() {
   const [refreshingStats, setRefreshingStats] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
 
+  // Send email dialog
+  const [emailTarget, setEmailTarget] = useState<PCWithDetails | null>(null);
+  const [emailAccounts, setEmailAccounts] = useState<{ id: string; email: string }[]>([]);
+  const [emailAccountId, setEmailAccountId] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+
+  // Sample invitation links
+  const [sampleLinks, setSampleLinks] = useState<{ id: string; url: string; label: string | null; total_quantity: number | null; used_count: number; expires_at: string | null; is_active: boolean }[]>([]);
+  const [showAddSampleLink, setShowAddSampleLink] = useState(false);
+  const [sampleLinkForm, setSampleLinkForm] = useState({ url: '', label: '', total_quantity: '', expires_at: '' });
+  const [addingSampleLink, setAddingSampleLink] = useState(false);
+
   // Budget edit
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetValue, setBudgetValue] = useState('');
@@ -160,10 +176,108 @@ export default function ProjectDetailPage() {
           .order('name');
         setBrandProducts((productsData || []) as Product[]);
       }
+
+      // Fetch sample invitation links
+      const { data: linksData } = await supabase
+        .from('sample_invitation_links')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      if (linksData) setSampleLinks(linksData);
+
+      // Fetch email accounts
+      const acctRes = await fetch('/api/email-accounts');
+      if (acctRes.ok) {
+        const accts = await acctRes.json();
+        setEmailAccounts(accts);
+        if (accts.length > 0) setEmailAccountId(accts[0].id);
+      }
     } catch (error) {
       console.error('Error fetching project data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openSendEmail = async (pc: PCWithDetails) => {
+    setEmailTarget(pc);
+    setEmailLoading(true);
+    setEmailSent(false);
+    try {
+      const res = await fetch('/api/emails/compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectCreatorId: pc.id, templateSlug: 'confirmed_welcome' }),
+      });
+      if (res.ok) {
+        const draft = await res.json();
+        setEmailSubject(draft.subject);
+        setEmailBody(draft.bodyHtml);
+      }
+    } catch {}
+    setEmailLoading(false);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailTarget || !emailAccountId) return;
+    setEmailSending(true);
+    try {
+      const toEmail = emailTarget.creator?.email || '';
+      const res = await fetch('/api/emails/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailAccountId,
+          to: toEmail,
+          subject: emailSubject,
+          bodyHtml: emailBody,
+          projectCreatorId: emailTarget.id,
+        }),
+      });
+      if (res.ok) setEmailSent(true);
+    } catch {}
+    setEmailSending(false);
+  };
+
+  const handleAddSampleLink = async () => {
+    if (!sampleLinkForm.url.trim()) return;
+    setAddingSampleLink(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sample-links`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: sampleLinkForm.url,
+          label: sampleLinkForm.label || null,
+          total_quantity: sampleLinkForm.total_quantity ? parseInt(sampleLinkForm.total_quantity) : null,
+          expires_at: sampleLinkForm.expires_at || null,
+        }),
+      });
+      if (res.ok) {
+        const newLink = await res.json();
+        setSampleLinks(prev => [newLink, ...prev]);
+        setSampleLinkForm({ url: '', label: '', total_quantity: '', expires_at: '' });
+        setShowAddSampleLink(false);
+      }
+    } catch {}
+    setAddingSampleLink(false);
+  };
+
+  const toggleSampleLinkActive = async (linkId: string, isActive: boolean) => {
+    const res = await fetch(`/api/projects/${projectId}/sample-links`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: linkId, is_active: isActive }),
+    });
+    if (res.ok) {
+      setSampleLinks(prev => prev.map(l => l.id === linkId ? { ...l, is_active: isActive } : l));
+    }
+  };
+
+  const deleteSampleLink = async (linkId: string) => {
+    const res = await fetch(`/api/projects/${projectId}/sample-links?id=${linkId}`, { method: 'DELETE' });
+    if (res.ok) {
+      setSampleLinks(prev => prev.filter(l => l.id !== linkId));
     }
   };
 
@@ -747,6 +861,63 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
+        {/* Sample Invitation Links */}
+        {canManageCreators && (
+          <div className="max-w-7xl mx-auto px-6 pt-4">
+            <Card>
+              <CardHeader className="py-3 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Link2 className="w-4 h-4" /> Sample Invitation Links
+                    <Badge variant="secondary" className="text-xs">{sampleLinks.length}</Badge>
+                  </CardTitle>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowAddSampleLink(true)}>
+                    <Plus className="w-3 h-3 mr-1" /> Add Link
+                  </Button>
+                </div>
+              </CardHeader>
+              {sampleLinks.length > 0 && (
+                <CardContent className="px-4 pb-3 pt-0">
+                  <div className="space-y-2">
+                    {sampleLinks.map(link => (
+                      <div key={link.id} className="flex items-center gap-3 text-sm border rounded-lg px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate text-xs">
+                              {link.label || link.url}
+                            </a>
+                            <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
+                          </div>
+                          <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
+                            {link.total_quantity != null && <span>Used: {link.used_count}/{link.total_quantity}</span>}
+                            {link.expires_at && (
+                              <span className={new Date(link.expires_at) < new Date() ? 'text-red-500' : ''}>
+                                Expires: {new Date(link.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => toggleSampleLinkActive(link.id, !link.is_active)}
+                          className={cn(
+                            'text-xs px-2 py-0.5 rounded-full border transition-colors',
+                            link.is_active ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-muted-foreground/20 text-muted-foreground'
+                          )}
+                        >
+                          {link.is_active ? 'Active' : 'Inactive'}
+                        </button>
+                        <button onClick={() => deleteSampleLink(link.id)} className="text-muted-foreground hover:text-red-500">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          </div>
+        )}
+
         <div className="max-w-7xl mx-auto p-6 space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -926,6 +1097,7 @@ export default function ProjectDetailPage() {
                     <TableHead>Remind</TableHead>
                     <TableHead>Review</TableHead>
                     {canManageCreators && <TableHead>URL</TableHead>}
+                    {canManageCreators && <TableHead className="text-center">Email</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1155,6 +1327,19 @@ export default function ProjectDetailPage() {
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
+                            </TableCell>
+                          )}
+                          {canManageCreators && (
+                            <TableCell className="text-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="w-6 h-6"
+                                onClick={(e) => { e.stopPropagation(); openSendEmail(pc); }}
+                                title="Send Email"
+                              >
+                                <Mail className="w-4 h-4" />
+                              </Button>
                             </TableCell>
                           )}
                         </TableRow>
@@ -1749,6 +1934,134 @@ export default function ProjectDetailPage() {
                 )}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {/* Add Sample Link Dialog */}
+        <Dialog open={showAddSampleLink} onOpenChange={setShowAddSampleLink}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Add Sample Invitation Link</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm">URL *</Label>
+                <Input
+                  value={sampleLinkForm.url}
+                  onChange={(e) => setSampleLinkForm(f => ({ ...f, url: e.target.value }))}
+                  placeholder="https://..."
+                  className="mt-1 h-9"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Label</Label>
+                <Input
+                  value={sampleLinkForm.label}
+                  onChange={(e) => setSampleLinkForm(f => ({ ...f, label: e.target.value }))}
+                  placeholder="e.g. TikTok Shop Sample"
+                  className="mt-1 h-9"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-sm">Quantity</Label>
+                  <Input
+                    type="number"
+                    value={sampleLinkForm.total_quantity}
+                    onChange={(e) => setSampleLinkForm(f => ({ ...f, total_quantity: e.target.value }))}
+                    placeholder="Unlimited"
+                    className="mt-1 h-9"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Expires</Label>
+                  <Input
+                    type="date"
+                    value={sampleLinkForm.expires_at}
+                    onChange={(e) => setSampleLinkForm(f => ({ ...f, expires_at: e.target.value }))}
+                    className="mt-1 h-9"
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAddSampleLink(false)}>Cancel</Button>
+              <Button onClick={handleAddSampleLink} disabled={addingSampleLink || !sampleLinkForm.url}>
+                {addingSampleLink ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Add Link
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Send Email Dialog */}
+        <Dialog open={!!emailTarget} onOpenChange={(open) => { if (!open) { setEmailTarget(null); setEmailSent(false); } }}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Mail className="w-5 h-5" />
+                Send Email — {emailTarget?.creator?.name || emailTarget?.creator?.tiktok_handle}
+              </DialogTitle>
+            </DialogHeader>
+            {emailSent ? (
+              <div className="text-center py-8">
+                <Check className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+                <p className="text-lg font-semibold">Email Sent!</p>
+                <p className="text-sm text-muted-foreground mt-1">to {emailTarget?.creator?.email}</p>
+                <Button className="mt-4" onClick={() => { setEmailTarget(null); setEmailSent(false); }}>Close</Button>
+              </div>
+            ) : emailLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm font-medium">Send from</Label>
+                    <select
+                      className="flex h-9 w-full rounded-md border px-3 py-1 text-sm bg-background mt-1"
+                      value={emailAccountId}
+                      onChange={(e) => setEmailAccountId(e.target.value)}
+                    >
+                      {emailAccounts.length === 0 ? (
+                        <option value="">No accounts connected</option>
+                      ) : (
+                        emailAccounts.map((a: any) => <option key={a.id} value={a.id}>{a.email}</option>)
+                      )}
+                    </select>
+                    {emailAccounts.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        <a href="/api/auth/gmail" className="underline">Connect a Gmail account</a> first
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">To</Label>
+                    <Input value={emailTarget?.creator?.email || 'No email'} disabled className="h-9 mt-1 bg-muted text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Subject</Label>
+                    <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="h-9 mt-1 text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Body (HTML)</Label>
+                    <textarea
+                      value={emailBody}
+                      onChange={(e) => setEmailBody(e.target.value)}
+                      className="flex w-full rounded-md border px-3 py-2 text-sm bg-background mt-1 min-h-[200px] resize-y font-mono text-xs"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setEmailTarget(null)}>Cancel</Button>
+                  <Button
+                    onClick={handleSendEmail}
+                    disabled={emailSending || !emailAccountId || !emailTarget?.creator?.email}
+                  >
+                    {emailSending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                    Send Email
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
       </div>
