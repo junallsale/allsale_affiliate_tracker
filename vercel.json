@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "src/app/api/videos/refresh/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
