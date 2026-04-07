@@ -59,6 +59,97 @@ const classificationColors: Record<string, string> = {
   other: 'bg-muted text-muted-foreground',
 };
 
+function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, onSent }: {
+  draft: EmailDraft;
+  accounts: EmailAccount[];
+  defaultAccountId: string;
+  toEmail: string;
+  threadId?: string;
+  onSent: () => void;
+}) {
+  const supabase = useMemo(() => createSupabaseBrowser(), []);
+  const [subject, setSubject] = useState(draft.draft_subject || '');
+  const [body, setBody] = useState(draft.draft_body_html || '');
+  const [accountId, setAccountId] = useState(defaultAccountId);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleSend = async () => {
+    if (!accountId || !toEmail) return;
+    setSending(true);
+    try {
+      const res = await fetch('/api/emails/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailAccountId: accountId,
+          to: toEmail,
+          subject,
+          bodyHtml: body,
+          projectCreatorId: draft.project_creator?.id,
+          threadId,
+        }),
+      });
+      if (res.ok) {
+        await supabase
+          .from('email_drafts')
+          .update({ status: 'sent', reviewed_at: new Date().toISOString(), draft_subject: subject, draft_body_html: body })
+          .eq('id', draft.id);
+        setSent(true);
+        onSent();
+      }
+    } catch {}
+    setSending(false);
+  };
+
+  if (sent) {
+    return (
+      <div className="text-center py-4">
+        <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+        <p className="text-sm font-medium">Sent!</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">Send from</label>
+        <select
+          className="flex h-8 w-full rounded-md border px-2 py-1 text-xs bg-background mt-1"
+          value={accountId}
+          onChange={(e) => setAccountId(e.target.value)}
+        >
+          {accounts.filter(a => a.is_active).map(a => (
+            <option key={a.id} value={a.id}>{a.email}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">To: {toEmail}</label>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">Subject</label>
+        <Input value={subject} onChange={(e) => setSubject(e.target.value)} className="h-8 mt-1 text-sm" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">Body</label>
+        <div className="mt-1">
+          <Suspense fallback={<div className="h-[160px] border rounded-md flex items-center justify-center text-muted-foreground text-sm">Loading editor...</div>}>
+            <RichTextEditor value={body} onChange={setBody} placeholder="Edit reply..." />
+          </Suspense>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={handleSend} disabled={sending || !accountId || !toEmail}>
+          {sending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Send className="w-3 h-3 mr-1" />}
+          Send
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function EmailQueuePage() {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
@@ -513,14 +604,27 @@ export default function EmailQueuePage() {
                                   )}
                                 </div>
 
-                                {/* Draft Reply */}
+                                {/* Draft Reply — editable if pending or escalated */}
                                 <div className="border rounded-lg p-4 bg-background">
                                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Draft Reply</h4>
-                                  <div className="text-sm font-medium mb-2">{d.draft_subject}</div>
-                                  <div
-                                    className="text-sm border-t pt-2 max-h-[300px] overflow-y-auto prose prose-sm"
-                                    dangerouslySetInnerHTML={{ __html: d.draft_body_html || '' }}
-                                  />
+                                  {(d.status === 'pending' || d.status === 'escalated') ? (
+                                    <InlineEditor
+                                      draft={d}
+                                      accounts={accounts}
+                                      defaultAccountId={sendAccountId}
+                                      toEmail={em?.from_email || ''}
+                                      threadId={em?.gmail_thread_id}
+                                      onSent={() => fetchData()}
+                                    />
+                                  ) : (
+                                    <>
+                                      <div className="text-sm font-medium mb-2">{d.draft_subject}</div>
+                                      <div
+                                        className="text-sm border-t pt-2 max-h-[300px] overflow-y-auto prose prose-sm"
+                                        dangerouslySetInnerHTML={{ __html: d.draft_body_html || '' }}
+                                      />
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </TableCell>
