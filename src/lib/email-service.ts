@@ -90,9 +90,10 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
     templateBody = template.body_html;
   }
 
-  // Build contract link
+  // Build contract link + unique thread identifier
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://allsale-affiliate-tracker.vercel.app';
   const contractLink = `${baseUrl}/c/${pc.unique_slug}`;
+  const threadRef = pc.id.slice(0, 8).toUpperCase(); // unique per project_creator
 
   // Product info
   const products = (pc as any).project_creator_products || [];
@@ -148,8 +149,11 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
     ...params.extraVariables,
   };
 
+  // Append thread ref to subject for unique Gmail threading
+  const renderedSubject = `${renderTemplate(templateSubject, variables)} [#${threadRef}]`;
+
   return {
-    subject: renderTemplate(templateSubject, variables),
+    subject: renderedSubject,
     bodyHtml: renderTemplate(templateBody, variables),
     toEmail: creator?.email || '',
     creatorName: variables.creator_name,
