@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServer } from '@/lib/supabase-server';
 import { listNewEmails, getEmailById } from '@/lib/gmail';
 import { classifyEmail } from '@/lib/email-classifier';
 import { composeDraft } from '@/lib/draft-composer';
@@ -12,13 +13,26 @@ function getServiceClient() {
   );
 }
 
-function verifyCron(req: NextRequest): boolean {
+async function verifyCron(req: NextRequest): Promise<boolean> {
+  // Check CRON_SECRET (Vercel cron or manual URL call)
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // No secret configured = allow (dev mode)
-  const auth = req.headers.get('authorization');
-  if (auth === `Bearer ${secret}`) return true;
-  const param = req.nextUrl.searchParams.get('secret');
-  return param === secret;
+  if (secret) {
+    const auth = req.headers.get('authorization');
+    if (auth === `Bearer ${secret}`) return true;
+    const param = req.nextUrl.searchParams.get('secret');
+    if (param === secret) return true;
+  } else {
+    return true; // No secret configured = allow (dev mode)
+  }
+
+  // Also allow if user is authenticated (called from admin UI)
+  try {
+    const supabase = await createSupabaseServer();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) return true;
+  } catch {}
+
+  return false;
 }
 
 /** Extract email address from "Name <email@example.com>" format */
@@ -31,7 +45,7 @@ export const maxDuration = 120;
 
 /** GET /api/cron/poll-emails — Poll inbound emails, classify, create drafts */
 export async function GET(req: NextRequest) {
-  if (!verifyCron(req)) {
+  if (!(await verifyCron(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -73,24 +87,33 @@ export async function GET(req: NextRequest) {
         // Skip if it's our own sent email
         if (fromEmail === account.email.toLowerCase()) continue;
 
-        // Match to a project_creator
-        const { data: matchedPcs } = await supabase
-          .from('project_creators')
-          .select('id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))')
-          .or(`creator.email.eq.${fromEmail}`)
-          .limit(5);
+        // Match sender email to a project_creator via creators table
+        let pcMatch: any = null;
 
-        // Also try matching by payment_email
-        let pcMatch = matchedPcs?.find((pc: any) => {
-          const creatorEmail = (pc.creator?.email || '').toLowerCase();
-          return creatorEmail === fromEmail;
-        });
+        // 1. Match by creator email
+        const { data: creators } = await supabase
+          .from('creators')
+          .select('id')
+          .ilike('email', fromEmail)
+          .limit(1);
 
+        if (creators?.length) {
+          const { data: pcs } = await supabase
+            .from('project_creators')
+            .select('id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))')
+            .eq('creator_id', creators[0].id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (pcs?.length) pcMatch = pcs[0];
+        }
+
+        // 2. Match by payment_email
         if (!pcMatch) {
           const { data: byPayment } = await supabase
             .from('project_creators')
             .select('id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))')
-            .eq('payment_email', fromEmail)
+            .ilike('payment_email', fromEmail)
+            .order('created_at', { ascending: false })
             .limit(1);
           if (byPayment?.length) pcMatch = byPayment[0];
         }

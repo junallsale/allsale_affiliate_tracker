@@ -5,7 +5,7 @@ import { createSupabaseBrowser } from '@/lib/supabase-browser';
 
 const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
 import {
-  Mail, Send, X, AlertTriangle, Check, Loader2, Search, ExternalLink, Plus, RefreshCw,
+  Mail, Send, X, AlertTriangle, Check, Loader2, Search, ExternalLink, Plus, RefreshCw, Inbox,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -66,6 +66,10 @@ export default function EmailQueuePage() {
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   const [search, setSearch] = useState('');
 
+  // Polling
+  const [polling, setPolling] = useState(false);
+  const [pollResult, setPollResult] = useState<string | null>(null);
+
   // Send dialog
   const [sendDraft, setSendDraft] = useState<EmailDraft | null>(null);
   const [sendAccountId, setSendAccountId] = useState('');
@@ -102,6 +106,24 @@ export default function EmailQueuePage() {
 
     setLoading(false);
   }, [supabase, statusFilter, sendAccountId]);
+
+  const pollNow = useCallback(async () => {
+    setPolling(true);
+    setPollResult(null);
+    try {
+      const res = await fetch('/api/cron/poll-emails');
+      const data = await res.json();
+      if (res.ok) {
+        setPollResult(`Polled: ${data.processed || 0} emails, ${data.drafts || 0} drafts, ${data.escalated || 0} escalated`);
+        await fetchData();
+      } else {
+        setPollResult(data.error || 'Poll failed');
+      }
+    } catch {
+      setPollResult('Poll failed');
+    }
+    setPolling(false);
+  }, [fetchData]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -231,6 +253,10 @@ export default function EmailQueuePage() {
               </Button>
             </div>
           )}
+          <Button variant="default" size="sm" onClick={pollNow} disabled={polling}>
+            {polling ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Inbox className="w-4 h-4 mr-1" />}
+            Poll Gmail
+          </Button>
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -260,6 +286,9 @@ export default function EmailQueuePage() {
           </Button>
         ))}
         <span className="text-xs text-muted-foreground">{filtered.length} items</span>
+        {pollResult && (
+          <span className="text-xs text-blue-600 font-medium">{pollResult}</span>
+        )}
       </div>
 
       {/* Queue Table */}
