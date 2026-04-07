@@ -25,30 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'emailAccountId, to, subject, bodyHtml required' }, { status: 400 });
     }
 
-    // Auto-resolve inReplyTo from thread if not provided
-    let resolvedInReplyTo = inReplyTo;
-    if (threadId && !resolvedInReplyTo) {
-      const db = getServiceClient();
-      const { data: lastMsg } = await db
-        .from('email_messages')
-        .select('message_id_header')
-        .eq('gmail_thread_id', threadId)
-        .not('message_id_header', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (lastMsg?.length) {
-        resolvedInReplyTo = lastMsg[0].message_id_header;
-      }
-    }
-
     const result = await sendEmailAndRecord({
       emailAccountId,
       to,
       subject,
       bodyHtml,
       projectCreatorId,
-      threadId,
-      inReplyTo: resolvedInReplyTo,
+      threadId: inReplyTo ? threadId : undefined,  // only set threadId when replying
+      inReplyTo,
     });
 
     // Auto-check contract_sent on first outbound email for this project_creator
