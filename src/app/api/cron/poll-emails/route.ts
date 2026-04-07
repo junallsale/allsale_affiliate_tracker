@@ -204,7 +204,7 @@ export async function GET(req: NextRequest) {
         }
 
         // Compose reply draft for Email Queue
-        const draft = await composeDraft(classification, pcId);
+        const draft = await composeDraft(classification, pcId, email.subject);
         if (draft) {
           await supabase.from('email_drafts').insert({
             email_message_id: savedMsg.id,

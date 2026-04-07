@@ -78,15 +78,21 @@ async function getProjectCreatorContext(projectCreatorId: string): Promise<Draft
 /** Compose a reply draft based on classification */
 export async function composeDraft(
   classification: EmailClassification,
-  projectCreatorId: string
+  projectCreatorId: string,
+  originalSubject?: string
 ): Promise<{ subject: string; bodyHtml: string } | null> {
   const ctx = await getProjectCreatorContext(projectCreatorId);
   if (!ctx) return null;
 
+  // Always use "Re: <original subject>" for threading
+  const replySubject = originalSubject
+    ? (originalSubject.toLowerCase().startsWith('re:') ? originalSubject : `Re: ${originalSubject}`)
+    : null;
+
   switch (classification) {
     case 'price_negotiation':
       return {
-        subject: `Re: Rate Information for ${ctx.projectName}`,
+        subject: replySubject || `Re: Rate Information for ${ctx.projectName}`,
         bodyHtml: `<p>Hi ${ctx.creatorName},</p>
 <p>Thank you for your interest! Here are the details for this campaign:</p>
 <ul>
@@ -99,7 +105,7 @@ export async function composeDraft(
 
     case 'interest':
       return {
-        subject: `Re: Next Steps for ${ctx.projectName}`,
+        subject: replySubject || `Re: Next Steps for ${ctx.projectName}`,
         bodyHtml: `<p>Hi ${ctx.creatorName},</p>
 <p>Great to hear you're interested in the <strong>${ctx.projectName}</strong> campaign by ${ctx.brandName}!</p>
 <p>Here's your next step — please review and sign your contract: <a href="${ctx.contractLink}">Sign Contract</a></p>
@@ -110,7 +116,7 @@ ${ctx.sampleLink ? `<p>You can also request your sample here: <a href="${ctx.sam
     case 'sample_request':
       if (ctx.sampleLink) {
         return {
-          subject: `Re: Sample Request for ${ctx.projectName}`,
+          subject: replySubject || `Re: Sample Request for ${ctx.projectName}`,
           bodyHtml: `<p>Hi ${ctx.creatorName},</p>
 <p>You can request your sample through this link: <a href="${ctx.sampleLink}">Get Sample</a></p>
 <p>Let us know once you've received it!</p>`,
@@ -124,7 +130,7 @@ ${ctx.sampleLink ? `<p>You can also request your sample here: <a href="${ctx.sam
 
     case 'content_brief':
       return {
-        subject: `Re: Content Guidelines for ${ctx.projectName}`,
+        subject: replySubject || `Re: Content Guidelines for ${ctx.projectName}`,
         bodyHtml: `<p>Hi ${ctx.creatorName},</p>
 ${ctx.contentGuideUrl
   ? `<p>Here's the content guide for your campaign: <a href="${ctx.contentGuideUrl}">Content Guide</a></p>`
