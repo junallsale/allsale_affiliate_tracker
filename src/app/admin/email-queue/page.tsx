@@ -37,6 +37,7 @@ interface EmailDraft {
     to_email: string;
     subject: string;
     body_text: string;
+    body_html: string;
     received_at: string;
     gmail_thread_id: string;
     message_id_header: string | null;
@@ -548,7 +549,7 @@ export default function EmailQueuePage() {
                               <div>
                                 <div className="text-xs font-medium truncate max-w-[250px]">{em.subject}</div>
                                 <div className="text-xs text-muted-foreground truncate max-w-[250px]">
-                                  {em.body_text?.slice(0, 100)}
+                                  {(em.body_text || em.body_html?.replace(/<[^>]+>/g, ''))?.slice(0, 100)}
                                 </div>
                               </div>
                             ) : (
@@ -651,8 +652,14 @@ export default function EmailQueuePage() {
                                       <div className="text-xs text-muted-foreground mb-1">From: {em.from_email}</div>
                                       {em.cc_emails && <div className="text-xs text-muted-foreground mb-1">CC: {em.cc_emails}</div>}
                                       <div className="text-sm font-medium mb-2">{em.subject}</div>
-                                      <div className="text-sm whitespace-pre-wrap border-t pt-2 max-h-[300px] overflow-y-auto">
-                                        {em.body_text || <span className="text-muted-foreground italic">No text content</span>}
+                                      <div className="text-sm border-t pt-2 max-h-[300px] overflow-y-auto">
+                                        {em.body_text ? (
+                                          <div className="whitespace-pre-wrap">{em.body_text}</div>
+                                        ) : (em as any).body_html ? (
+                                          <div className="prose prose-sm" dangerouslySetInnerHTML={{ __html: (em as any).body_html }} />
+                                        ) : (
+                                          <span className="text-muted-foreground italic">No content</span>
+                                        )}
                                       </div>
                                     </>
                                   ) : (

@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     if (messageIds.length > 0) {
       const { data: messages } = await supabase
         .from('email_messages')
-        .select('id, from_email, to_email, subject, body_text, received_at, gmail_thread_id, message_id_header, cc_emails')
+        .select('id, from_email, to_email, subject, body_text, body_html, received_at, gmail_thread_id, message_id_header, cc_emails')
         .in('id', messageIds);
 
       for (const m of messages || []) {
