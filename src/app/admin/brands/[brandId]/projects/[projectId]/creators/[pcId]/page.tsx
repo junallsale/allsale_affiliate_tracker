@@ -366,9 +366,10 @@ export default function CreatorDetailPage() {
     try {
       setSavingContract(true);
       const newAmount = parseFloat(contractInput) || 0;
+      const advance = Math.round(newAmount * 50) / 100;
       const { error } = await supabase
         .from('project_creators')
-        .update({ contract_amount: newAmount })
+        .update({ contract_amount: newAmount, advance_payment: advance, remaining_payment: newAmount - advance })
         .eq('id', pcId);
 
       if (error) throw error;
