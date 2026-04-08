@@ -132,6 +132,7 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
     creator_name: creator?.name || creator?.tiktok_handle || 'Creator',
     project_name: project?.name || '',
     brand_name: brand?.name || '',
+    thread_ref: threadRef,
     contract_link: contractLink,
     contract_amount: String(pc.contract_amount || 0),
     video_count: String((pc as any).assigned_video_count || 1),
@@ -149,11 +150,14 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
     ...params.extraVariables,
   };
 
-  // Append thread ref to subject for unique Gmail threading
-  const renderedSubject = `${renderTemplate(templateSubject, variables)} [#${threadRef}]`;
+  const renderedSubject = renderTemplate(templateSubject, variables);
+  // Ensure thread ref is in subject for unique Gmail threading
+  const finalSubject = renderedSubject.includes(`[#${threadRef}]`)
+    ? renderedSubject
+    : `${renderedSubject} [#${threadRef}]`;
 
   return {
-    subject: renderedSubject,
+    subject: finalSubject,
     bodyHtml: renderTemplate(templateBody, variables),
     toEmail: creator?.email || '',
     creatorName: variables.creator_name,
