@@ -608,8 +608,20 @@ export default function CreatorDetailPage() {
                 {creator.tiktok_handle && (
                   <span className="font-mono text-sm text-muted-foreground">@{creator.tiktok_handle}</span>
                 )}
-                {creator.email && !isBrandViewer && (
-                  <span className="text-sm text-muted-foreground">{creator.email}</span>
+                {!isBrandViewer && (
+                  <input
+                    className="text-sm text-muted-foreground bg-transparent border-b border-transparent hover:border-muted-foreground/30 focus:border-primary focus:outline-none px-0 py-0.5 w-56"
+                    defaultValue={creator.email || ''}
+                    placeholder="Add email..."
+                    onBlur={async (e) => {
+                      const val = e.target.value.trim();
+                      if (val !== (creator.email || '')) {
+                        await supabase.from('creators').update({ email: val }).eq('id', creator.id);
+                        setPcData(prev => prev ? { ...prev, creators: { ...prev.creators, email: val } } as PCFullData : prev);
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  />
                 )}
               </div>
             </div>
