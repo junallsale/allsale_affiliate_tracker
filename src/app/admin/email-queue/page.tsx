@@ -186,73 +186,27 @@ export default function EmailQueuePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
-    // Fetch drafts — simple query first, then enrich with related data
-    let query = supabase
-      .from('email_drafts')
-      .select('id, draft_subject, draft_body_html, classification, status, created_at, reviewed_at, email_message_id, project_creator_id')
-      .order('created_at', { ascending: false })
-      .limit(100);
+    // Fetch enriched drafts from optimized API (3 queries instead of N*3)
+    const params = new URLSearchParams();
+    if (statusFilter) params.set('status', statusFilter);
+    params.set('limit', '100');
 
-    if (statusFilter) query = query.eq('status', statusFilter);
-
-    const { data: rawDrafts } = await query;
-
-    // Enrich each draft with related data
-    const enriched: EmailDraft[] = [];
-    for (const d of rawDrafts || []) {
-      let emailMessage = null;
-      let projectCreator = null;
-
-      if (d.email_message_id) {
-        const { data: em } = await supabase
-          .from('email_messages')
-          .select('id, from_email, to_email, subject, body_text, received_at, gmail_thread_id, message_id_header, cc_emails')
-          .eq('id', d.email_message_id)
-          .single();
-        emailMessage = em;
-      }
-
-      if (d.project_creator_id) {
-        const { data: pc } = await supabase
-          .from('project_creators')
-          .select('id, unique_slug')
-          .eq('id', d.project_creator_id)
-          .single();
-
-        if (pc) {
-          // Fetch creator and project separately
-          const { data: fullPc } = await supabase
-            .from('project_creators')
-            .select('creator:creators(name, tiktok_handle), project:projects(name, brand:brands(name))')
-            .eq('id', pc.id)
-            .single();
-
-          projectCreator = {
-            ...pc,
-            creator: (fullPc as any)?.creator || null,
-            project: (fullPc as any)?.project || null,
-          };
-        }
-      }
-
-      enriched.push({
-        ...d,
-        email_message: emailMessage,
-        project_creator: projectCreator,
-      } as EmailDraft);
+    const res = await fetch(`/api/emails/drafts?${params}`);
+    if (res.ok) {
+      const data = await res.json();
+      setDrafts(data as EmailDraft[]);
     }
-    setDrafts(enriched);
 
     // Fetch email accounts
-    const res = await fetch('/api/email-accounts');
-    if (res.ok) {
-      const accts = await res.json();
+    const acctRes = await fetch('/api/email-accounts');
+    if (acctRes.ok) {
+      const accts = await acctRes.json();
       setAccounts(accts);
       if (accts.length > 0 && !sendAccountId) setSendAccountId(accts[0].id);
     }
 
     setLoading(false);
-  }, [supabase, statusFilter, sendAccountId]);
+  }, [statusFilter, sendAccountId]);
 
   const pollNow = useCallback(async () => {
     setPolling(true);
