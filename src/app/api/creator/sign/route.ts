@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { generateContractHash, generateContractPdf, type ContractData } from "@/lib/contract-pdf";
+import { sendGmailEmail, getAccessToken, type EmailAttachment } from "@/lib/gmail";
 
 function getServiceClient() {
   return createClient(
@@ -14,6 +16,7 @@ export async function POST(request: NextRequest) {
     const projectCreatorId = formData.get("project_creator_id") as string;
     const legalName = formData.get("legal_name") as string;
     const paymentEmail = formData.get("payment_email") as string;
+    const contractEmail = formData.get("contract_email") as string;
     const file = formData.get("signature") as File;
 
     if (!projectCreatorId || !legalName?.trim() || !paymentEmail?.trim() || !file) {
@@ -43,12 +46,16 @@ export async function POST(request: NextRequest) {
     const shippingAddress = formData.get("shipping_address") as string | null;
     const shippingPhone = formData.get("shipping_phone") as string | null;
 
+    const signedAt = new Date().toISOString();
+    const resolvedContractEmail = (contractEmail || paymentEmail).trim();
+
     // Update project_creators record
     const updateData: Record<string, unknown> = {
       legal_name: legalName.trim(),
       payment_email: paymentEmail.trim(),
+      contract_email: resolvedContractEmail,
       signature_url: signaturePublicUrl,
-      signed_at: new Date().toISOString(),
+      signed_at: signedAt,
     };
     if (shippingName) updateData.shipping_name = shippingName.trim();
     if (shippingAddress) updateData.shipping_address = shippingAddress.trim();
@@ -63,9 +70,150 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    // ── Generate contract PDF + send email (async, don't block response) ──
+    generateAndSendContract(supabase, projectCreatorId, {
+      legalName: legalName.trim(),
+      paymentEmail: paymentEmail.trim(),
+      contractEmail: resolvedContractEmail,
+      signatureUrl: signaturePublicUrl,
+      signedAt,
+      shippingName: shippingName?.trim(),
+      shippingAddress: shippingAddress?.trim(),
+    }).catch(err => console.error("Contract PDF/email error:", err));
+
     return NextResponse.json({ signature_url: signaturePublicUrl });
   } catch (err) {
     console.error("Error saving signature:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+async function generateAndSendContract(
+  supabase: ReturnType<typeof getServiceClient>,
+  projectCreatorId: string,
+  params: {
+    legalName: string;
+    paymentEmail: string;
+    contractEmail: string;
+    signatureUrl: string;
+    signedAt: string;
+    shippingName?: string;
+    shippingAddress?: string;
+  }
+) {
+  // Fetch full project_creator data
+  const { data: pc } = await supabase
+    .from("project_creators")
+    .select(`
+      id, contract_amount, advance_payment, remaining_payment, commission_rate,
+      assigned_video_count, content_type,
+      creator:creators(name, tiktok_handle, email),
+      project:projects(name, submission_deadline, brand:brands(name)),
+      project_creator_products:project_creator_products(product:products(name))
+    `)
+    .eq("id", projectCreatorId)
+    .single();
+
+  if (!pc) return;
+
+  const creator = pc.creator as any;
+  const project = (pc as any).project as any;
+  const brand = project?.brand as any;
+  const products = ((pc as any).project_creator_products || []).map((p: any) => p.product?.name).filter(Boolean);
+
+  const contractData: ContractData = {
+    projectCreatorId,
+    legalName: params.legalName,
+    paymentEmail: params.paymentEmail,
+    contractEmail: params.contractEmail,
+    creatorHandle: creator?.tiktok_handle || '',
+    brandName: brand?.name || '',
+    projectName: project?.name || '',
+    contentType: (pc as any).content_type || 'shoppable_video',
+    assignedVideoCount: (pc as any).assigned_video_count || 1,
+    products,
+    contractAmount: pc.contract_amount || 0,
+    advancePayment: pc.advance_payment || 0,
+    remainingPayment: pc.remaining_payment || 0,
+    commissionRate: (pc as any).commission_rate || 0,
+    uploadDeadline: project?.submission_deadline,
+    signedAt: params.signedAt,
+    signatureUrl: params.signatureUrl,
+    shippingName: params.shippingName,
+    shippingAddress: params.shippingAddress,
+  };
+
+  // Generate hash
+  const contractHash = generateContractHash(contractData);
+
+  // Generate PDF
+  const pdfBuffer = await generateContractPdf(contractData, contractHash);
+
+  // Upload PDF to storage
+  const pdfFileName = `contracts/${projectCreatorId}_${Date.now()}.pdf`;
+  await supabase.storage
+    .from("invoices")
+    .upload(pdfFileName, pdfBuffer, { contentType: "application/pdf", upsert: true });
+
+  const { data: pdfUrlData } = supabase.storage.from("invoices").getPublicUrl(pdfFileName);
+
+  // Save hash and PDF URL
+  await supabase
+    .from("project_creators")
+    .update({ contract_hash: contractHash, contract_pdf_url: pdfUrlData.publicUrl })
+    .eq("id", projectCreatorId);
+
+  // Send email with PDF attachment
+  const { data: emailAccount } = await supabase
+    .from("email_accounts")
+    .select("email, gmail_refresh_token")
+    .eq("email", "rosters@allsale.ai")
+    .single();
+
+  if (!emailAccount) {
+    // Fallback: try any active account
+    const { data: anyAccount } = await supabase
+      .from("email_accounts")
+      .select("email, gmail_refresh_token")
+      .eq("is_active", true)
+      .limit(1)
+      .single();
+    if (!anyAccount) return;
+    Object.assign(emailAccount || {}, anyAccount);
+  }
+
+  const senderAccount = emailAccount!;
+  const threadRef = projectCreatorId.slice(0, 8).toUpperCase();
+
+  const attachment: EmailAttachment = {
+    filename: `Agreement_${brand?.name || 'ALLSALE'}_${creator?.tiktok_handle || 'creator'}.pdf`,
+    mimeType: "application/pdf",
+    data: pdfBuffer,
+  };
+
+  await sendGmailEmail({
+    refreshToken: senderAccount.gmail_refresh_token,
+    from: senderAccount.email,
+    to: params.contractEmail,
+    cc: "rosters@allsale.ai",
+    subject: `Your Agreement with ${brand?.name || 'ALLSALE'} is Confirmed [#${threadRef}]`,
+    bodyHtml: `<p>Hi ${params.legalName},</p>
+<p>Thank you for signing the agreement for the <strong>${brand?.name}</strong> campaign!</p>
+<p>Please find your signed contract attached as a PDF for your records.</p>
+<p>If you have any questions, feel free to reply to this email.</p>
+<p>Best regards,<br>ALLSALE Team</p>`,
+    attachments: [attachment],
+  });
+
+  // Record the email
+  await supabase.from("email_messages").insert({
+    project_creator_id: projectCreatorId,
+    direction: "outbound",
+    from_email: senderAccount.email,
+    to_email: params.contractEmail,
+    cc_emails: "rosters@allsale.ai",
+    subject: `Your Agreement with ${brand?.name || 'ALLSALE'} is Confirmed [#${threadRef}]`,
+    body_html: "Contract confirmation with PDF attachment",
+    sent_at: new Date().toISOString(),
+  });
 }

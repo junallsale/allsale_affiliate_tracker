@@ -99,6 +99,12 @@ export async function getAccessToken(refreshToken: string): Promise<string> {
   return data.access_token;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  mimeType: string;
+  data: Buffer;
+}
+
 /** Encode email to RFC 2822 base64url format */
 function encodeEmail(params: {
   from: string;
@@ -108,27 +114,44 @@ function encodeEmail(params: {
   bodyHtml: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: EmailAttachment[];
 }): string {
   const boundary = `boundary_${Date.now()}`;
+  const hasAttachments = params.attachments && params.attachments.length > 0;
+
   const headers = [
     `From: ${params.from}`,
     `To: ${params.to}`,
     ...(params.cc ? [`Cc: ${params.cc}`] : []),
     `Subject: ${params.subject}`,
     `MIME-Version: 1.0`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    `Content-Type: multipart/${hasAttachments ? 'mixed' : 'alternative'}; boundary="${boundary}"`,
     ...(params.inReplyTo ? [`In-Reply-To: ${params.inReplyTo}`, `References: ${params.references || params.inReplyTo}`] : []),
   ].join('\r\n');
 
-  const body = [
+  const parts = [
     `--${boundary}`,
     'Content-Type: text/html; charset="UTF-8"',
     '',
     params.bodyHtml,
-    `--${boundary}--`,
-  ].join('\r\n');
+  ];
 
-  const raw = `${headers}\r\n\r\n${body}`;
+  if (hasAttachments) {
+    for (const att of params.attachments!) {
+      parts.push(
+        `--${boundary}`,
+        `Content-Type: ${att.mimeType}; name="${att.filename}"`,
+        `Content-Disposition: attachment; filename="${att.filename}"`,
+        'Content-Transfer-Encoding: base64',
+        '',
+        att.data.toString('base64'),
+      );
+    }
+  }
+
+  parts.push(`--${boundary}--`);
+
+  const raw = `${headers}\r\n\r\n${parts.join('\r\n')}`;
   return Buffer.from(raw).toString('base64url');
 }
 
@@ -142,6 +165,7 @@ export async function sendGmailEmail(params: {
   bodyHtml: string;
   threadId?: string;
   inReplyTo?: string;
+  attachments?: EmailAttachment[];
 }): Promise<{ messageId: string; threadId: string }> {
   const accessToken = await getAccessToken(params.refreshToken);
   const raw = encodeEmail(params);

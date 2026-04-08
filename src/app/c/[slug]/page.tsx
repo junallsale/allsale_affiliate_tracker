@@ -202,6 +202,7 @@ export default function CreatorPublicPage() {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [legalName, setLegalName] = useState('');
   const [paymentEmail, setPaymentEmail] = useState('');
+  const [contractEmail, setContractEmail] = useState('');
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [signSubmitting, setSignSubmitting] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
@@ -244,6 +245,9 @@ export default function CreatorPublicPage() {
         if (projectCreator.payment_email) {
           setPaymentEmail(projectCreator.payment_email);
         }
+        // Pre-fill contract email with creator's email
+        const creatorEmail = (projectCreator as any).creator?.email || '';
+        if (creatorEmail) setContractEmail(creatorEmail);
 
         // If not signed, show modal
         if (!projectCreator.legal_name || !projectCreator.signature_url) {
@@ -316,6 +320,7 @@ export default function CreatorPublicPage() {
       formData.append('project_creator_id', pcData.id);
       formData.append('legal_name', legalName.trim());
       formData.append('payment_email', emailToUse);
+      formData.append('contract_email', contractEmail.trim() || emailToUse);
       formData.append('signature', blob, 'signature.png');
       if (requireShipping) {
         formData.append('shipping_name', shippingName.trim());
@@ -586,6 +591,23 @@ export default function CreatorPublicPage() {
                   />
                   <div className="text-xs text-muted-foreground space-y-1 p-2.5 rounded-md bg-muted/50">
                     <p>Payment will be sent via <strong>PayPal</strong> to this email address.</p>
+                  </div>
+                </div>
+
+                {/* Contract Email */}
+                <div className="space-y-2">
+                  <Label htmlFor="contract-email" className="text-sm font-medium">
+                    Contract Email
+                  </Label>
+                  <Input
+                    id="contract-email"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={contractEmail}
+                    onChange={(e) => setContractEmail(e.target.value)}
+                  />
+                  <div className="text-xs text-muted-foreground p-2.5 rounded-md bg-muted/50">
+                    <p>A signed copy of this agreement will be sent to this email address.</p>
                   </div>
                 </div>
 
