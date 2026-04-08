@@ -168,6 +168,7 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
 interface SendParams {
   emailAccountId: string;
   to: string;
+  cc?: string;
   subject: string;
   bodyHtml: string;
   projectCreatorId?: string;
@@ -196,6 +197,7 @@ export async function sendEmailAndRecord(params: SendParams): Promise<{
     refreshToken: account.gmail_refresh_token,
     from: account.email,
     to: params.to,
+    cc: params.cc,
     subject: params.subject,
     bodyHtml: params.bodyHtml,
     threadId: params.threadId,
@@ -211,6 +213,7 @@ export async function sendEmailAndRecord(params: SendParams): Promise<{
     direction: 'outbound',
     from_email: account.email,
     to_email: params.to,
+    cc_emails: params.cc || null,
     subject: params.subject,
     body_html: params.bodyHtml,
     sent_at: new Date().toISOString(),

@@ -40,6 +40,7 @@ interface EmailDraft {
     received_at: string;
     gmail_thread_id: string;
     message_id_header: string | null;
+    cc_emails: string | null;
   } | null;
   project_creator: {
     id: string;
@@ -60,18 +61,20 @@ const classificationColors: Record<string, string> = {
   other: 'bg-muted text-muted-foreground',
 };
 
-function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, inReplyTo, onSent }: {
+function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, inReplyTo, originalCc, onSent }: {
   draft: EmailDraft;
   accounts: EmailAccount[];
   defaultAccountId: string;
   toEmail: string;
   threadId?: string;
   inReplyTo?: string | null;
+  originalCc?: string | null;
   onSent: () => void;
 }) {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [subject, setSubject] = useState(draft.draft_subject || '');
   const [body, setBody] = useState(draft.draft_body_html || '');
+  const [cc, setCc] = useState(originalCc || '');
   const [accountId, setAccountId] = useState(defaultAccountId);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -86,6 +89,7 @@ function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, in
         body: JSON.stringify({
           emailAccountId: accountId,
           to: toEmail,
+          cc: cc || undefined,
           subject,
           bodyHtml: body,
           projectCreatorId: draft.project_creator?.id,
@@ -130,6 +134,10 @@ function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, in
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground">To: {toEmail}</label>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">CC</label>
+        <Input value={cc} onChange={(e) => setCc(e.target.value)} className="h-8 mt-1 text-xs" placeholder="email1@example.com, email2@example.com" />
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground">Subject</label>
@@ -198,7 +206,7 @@ export default function EmailQueuePage() {
       if (d.email_message_id) {
         const { data: em } = await supabase
           .from('email_messages')
-          .select('id, from_email, to_email, subject, body_text, received_at, gmail_thread_id, message_id_header')
+          .select('id, from_email, to_email, subject, body_text, received_at, gmail_thread_id, message_id_header, cc_emails')
           .eq('id', d.email_message_id)
           .single();
         emailMessage = em;
@@ -611,6 +619,7 @@ export default function EmailQueuePage() {
                                   {em ? (
                                     <>
                                       <div className="text-xs text-muted-foreground mb-1">From: {em.from_email}</div>
+                                      {em.cc_emails && <div className="text-xs text-muted-foreground mb-1">CC: {em.cc_emails}</div>}
                                       <div className="text-sm font-medium mb-2">{em.subject}</div>
                                       <div className="text-sm whitespace-pre-wrap border-t pt-2 max-h-[300px] overflow-y-auto">
                                         {em.body_text || <span className="text-muted-foreground italic">No text content</span>}
@@ -632,6 +641,7 @@ export default function EmailQueuePage() {
                                       toEmail={em?.from_email || ''}
                                       threadId={em?.gmail_thread_id}
                                       inReplyTo={em?.message_id_header}
+                                      originalCc={em?.cc_emails}
                                       onSent={() => fetchData()}
                                     />
                                   ) : (

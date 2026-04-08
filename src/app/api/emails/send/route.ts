@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { emailAccountId, to, subject, bodyHtml, projectCreatorId, threadId, inReplyTo } = await req.json();
+    const { emailAccountId, to, cc, subject, bodyHtml, projectCreatorId, threadId, inReplyTo } = await req.json();
 
     if (!emailAccountId || !to || !subject || !bodyHtml) {
       return NextResponse.json({ error: 'emailAccountId, to, subject, bodyHtml required' }, { status: 400 });
@@ -28,10 +28,11 @@ export async function POST(req: NextRequest) {
     const result = await sendEmailAndRecord({
       emailAccountId,
       to,
+      cc: cc || undefined,
       subject,
       bodyHtml,
       projectCreatorId,
-      threadId: inReplyTo ? threadId : undefined,  // only set threadId when replying
+      threadId: inReplyTo ? threadId : undefined,
       inReplyTo,
     });
 

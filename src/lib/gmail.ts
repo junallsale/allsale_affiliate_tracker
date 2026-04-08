@@ -103,6 +103,7 @@ export async function getAccessToken(refreshToken: string): Promise<string> {
 function encodeEmail(params: {
   from: string;
   to: string;
+  cc?: string;
   subject: string;
   bodyHtml: string;
   inReplyTo?: string;
@@ -112,6 +113,7 @@ function encodeEmail(params: {
   const headers = [
     `From: ${params.from}`,
     `To: ${params.to}`,
+    ...(params.cc ? [`Cc: ${params.cc}`] : []),
     `Subject: ${params.subject}`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -135,6 +137,7 @@ export async function sendGmailEmail(params: {
   refreshToken: string;
   from: string;
   to: string;
+  cc?: string;
   subject: string;
   bodyHtml: string;
   threadId?: string;
@@ -197,6 +200,7 @@ export async function getEmailById(
   threadId: string;
   from: string;
   to: string;
+  cc: string;
   subject: string;
   bodyText: string;
   bodyHtml: string;
@@ -238,6 +242,7 @@ export async function getEmailById(
     threadId: data.threadId,
     from: getHeader('From'),
     to: getHeader('To'),
+    cc: getHeader('Cc'),
     subject: getHeader('Subject'),
     bodyText,
     bodyHtml,

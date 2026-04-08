@@ -117,6 +117,7 @@ export default function ProjectDetailPage() {
   const [emailAccountId, setEmailAccountId] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
+  const [emailCc, setEmailCc] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -211,6 +212,7 @@ export default function ProjectDetailPage() {
     setEmailTarget(pc);
     setEmailLoading(true);
     setEmailSent(false);
+    setEmailCc('');
     try {
       const res = await fetch('/api/emails/compose', {
         method: 'POST',
@@ -237,6 +239,7 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({
           emailAccountId,
           to: toEmail,
+          cc: emailCc || undefined,
           subject: emailSubject,
           bodyHtml: emailBody,
           projectCreatorId: emailTarget.id,
@@ -2135,6 +2138,10 @@ export default function ProjectDetailPage() {
                   <div>
                     <Label className="text-sm font-medium">To</Label>
                     <Input value={emailTarget?.creator?.email || 'No email'} disabled className="h-9 mt-1 bg-muted text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">CC</Label>
+                    <Input value={emailCc} onChange={(e) => setEmailCc(e.target.value)} className="h-9 mt-1 text-sm" placeholder="email1@example.com, email2@example.com" />
                   </div>
                   <div>
                     <Label className="text-sm font-medium">Subject</Label>
