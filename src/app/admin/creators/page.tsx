@@ -95,7 +95,15 @@ function CategoryMultiSelect({
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="fixed z-50 bg-white border rounded-lg shadow-lg p-2 min-w-[160px]" style={{ top, left }}>
+      <div
+        className="fixed z-50 bg-white border rounded-lg shadow-lg p-2 min-w-[160px]"
+        style={{
+          left,
+          ...(top + 300 > window.innerHeight
+            ? { bottom: window.innerHeight - top + 4 }
+            : { top }),
+        }}
+      >
         {CATEGORY_OPTIONS.map(opt => (
           <label key={opt} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-muted/60 rounded text-sm select-none">
             <input type="checkbox" checked={selected.has(opt)} onChange={() => toggle(opt)} className="w-3.5 h-3.5" />
