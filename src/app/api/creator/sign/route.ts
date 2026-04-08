@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { generateContractHash, generateContractPdf, type ContractData } from "@/lib/contract-pdf";
 import { sendGmailEmail, getAccessToken, type EmailAttachment } from "@/lib/gmail";
 
+export const maxDuration = 60;
+
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,16 +72,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    // ── Generate contract PDF + send email (async, don't block response) ──
-    generateAndSendContract(supabase, projectCreatorId, {
-      legalName: legalName.trim(),
-      paymentEmail: paymentEmail.trim(),
-      contractEmail: resolvedContractEmail,
-      signatureUrl: signaturePublicUrl,
-      signedAt,
-      shippingName: shippingName?.trim(),
-      shippingAddress: shippingAddress?.trim(),
-    }).catch(err => console.error("Contract PDF/email error:", err));
+    // ── Generate contract PDF + send email ──
+    try {
+      await generateAndSendContract(supabase, projectCreatorId, {
+        legalName: legalName.trim(),
+        paymentEmail: paymentEmail.trim(),
+        contractEmail: resolvedContractEmail,
+        signatureUrl: signaturePublicUrl,
+        signedAt,
+        shippingName: shippingName?.trim(),
+        shippingAddress: shippingAddress?.trim(),
+      });
+    } catch (err) {
+      console.error("Contract PDF/email error:", err);
+      // Don't fail the signing — PDF/email is best-effort
+    }
 
     return NextResponse.json({ signature_url: signaturePublicUrl });
   } catch (err) {
