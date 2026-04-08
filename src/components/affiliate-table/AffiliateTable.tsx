@@ -156,17 +156,30 @@ export function AffiliateTable({
     debouncedUpdate(row.id, 'status', newStatus);
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     if (!confirmRow) return;
     const videos = parseInt(confirmVideos) || 1;
     const contract = parseFloat(confirmContract) || 0;
-    // Update video count and contract first, then status
-    onCellUpdate(confirmRow.id, 'planned_video_count', videos);
-    onCellUpdate(confirmRow.id, 'price_per_video', videos > 0 ? contract / videos : 0);
-    // Small delay to ensure fields update before status triggers project_creator creation
-    setTimeout(() => {
-      onCellUpdate(confirmRow.id, 'status', 'Confirmed');
-    }, 500);
+    // Send all fields in a single PATCH so project_creator gets correct values
+    try {
+      const res = await fetch('/api/affiliates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: confirmRow.id,
+          planned_video_count: videos,
+          price_per_video: videos > 0 ? contract / videos : 0,
+          contract_amount: contract,
+          status: 'Confirmed',
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        onCellUpdate(confirmRow.id, '_replace', updated);
+      }
+    } catch (err) {
+      console.error('Confirm failed:', err);
+    }
     setConfirmRow(null);
   };
 

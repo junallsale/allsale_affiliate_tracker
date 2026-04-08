@@ -186,6 +186,14 @@ export default function AffiliatesPage() {
 
   // Handlers
   const handleCellUpdate = useCallback(async (id: string, key: string, value: unknown) => {
+    // Handle bulk replace from confirm dialog (already sent to API)
+    if (key === '_replace') {
+      setAffiliates((prev) => prev.map((a) => (a.id === id ? (value as any) : a)));
+      setToast('✅ Creator added to project');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
     // Block operator from setting status to Confirmed
     if (isOperator && key === 'status' && value === 'Confirmed') {
       setToast('❌ Operator cannot set status to Confirmed');
