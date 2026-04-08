@@ -168,7 +168,10 @@ export async function PATCH(request: NextRequest) {
         .maybeSingle();
 
       if (!existingPc) {
-        const contractAmount = current.contract_amount || (current.planned_video_count || 0) * (current.price_per_video || 0);
+        // Use values from updates (popup input) first, then fall back to current affiliate data
+        const plannedVideos = updates.planned_video_count ?? current.planned_video_count ?? 1;
+        const pricePerVideo = updates.price_per_video ?? current.price_per_video ?? 0;
+        const contractAmount = updates.contract_amount ?? current.contract_amount ?? (plannedVideos * pricePerVideo);
         const advancePayment = Math.floor(contractAmount / 2);
         const { error: pcError } = await supabase
           .from("project_creators")
@@ -176,7 +179,7 @@ export async function PATCH(request: NextRequest) {
             project_id: projectId,
             creator_id: creatorId,
             unique_slug: generateSlug(),
-            assigned_video_count: current.planned_video_count || 1,
+            assigned_video_count: plannedVideos,
             content_type: "shoppable_video",
             contract_amount: contractAmount,
             advance_payment: advancePayment,
