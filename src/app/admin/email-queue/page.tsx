@@ -172,6 +172,10 @@ export default function EmailQueuePage() {
   // Expanded row
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDismissing, setBulkDismissing] = useState(false);
+
   // Polling
   const [polling, setPolling] = useState(false);
   const [pollResult, setPollResult] = useState<string | null>(null);
@@ -326,6 +330,38 @@ export default function EmailQueuePage() {
     fetchData();
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const pendingIds = filtered.filter(d => d.status === 'pending').map(d => d.id);
+    if (selectedIds.size === pendingIds.length && pendingIds.every(id => selectedIds.has(id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingIds));
+    }
+  };
+
+  const handleBulkDismiss = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDismissing(true);
+    const ids = [...selectedIds];
+    for (const id of ids) {
+      await supabase
+        .from('email_drafts')
+        .update({ status: 'dismissed', reviewed_at: new Date().toISOString() })
+        .eq('id', id);
+    }
+    setSelectedIds(new Set());
+    setBulkDismissing(false);
+    fetchData();
+  };
+
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { pending: 0, sent: 0, dismissed: 0, escalated: 0 };
     // We need all drafts for counts, but we only have filtered ones
@@ -407,6 +443,26 @@ export default function EmailQueuePage() {
         )}
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-muted/50 border rounded-lg">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={handleBulkDismiss}
+            disabled={bulkDismissing}
+          >
+            {bulkDismissing ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <X className="w-3 h-3 mr-1" />}
+            Dismiss Selected
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedIds(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
+
       {/* Queue Table */}
       <Card>
         <CardContent className="p-0">
@@ -414,6 +470,14 @@ export default function EmailQueuePage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8">
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5"
+                      checked={filtered.filter(d => d.status === 'pending').length > 0 && filtered.filter(d => d.status === 'pending').every(d => selectedIds.has(d.id))}
+                      onChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead className="min-w-[140px]">Creator</TableHead>
                   <TableHead>Classification</TableHead>
                   <TableHead className="min-w-[200px]">Incoming Email</TableHead>
@@ -426,7 +490,7 @@ export default function EmailQueuePage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                       {statusFilter === 'pending' ? 'No pending drafts — all caught up!' : 'No items found'}
                     </TableCell>
                   </TableRow>
@@ -441,6 +505,18 @@ export default function EmailQueuePage() {
                           className="cursor-pointer hover:bg-muted/50"
                           onClick={() => setExpandedId(isExpanded ? null : d.id)}
                         >
+                          {/* Checkbox */}
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            {d.status === 'pending' && (
+                              <input
+                                type="checkbox"
+                                className="w-3.5 h-3.5"
+                                checked={selectedIds.has(d.id)}
+                                onChange={() => toggleSelect(d.id)}
+                              />
+                            )}
+                          </TableCell>
+
                           {/* Creator */}
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -565,7 +641,7 @@ export default function EmailQueuePage() {
                         {/* Expanded Detail Row */}
                         {isExpanded && (
                           <TableRow className="bg-muted/30 hover:bg-muted/30">
-                            <TableCell colSpan={7} className="p-0">
+                            <TableCell colSpan={8} className="p-0">
                               <div className="grid grid-cols-2 gap-4 p-4">
                                 {/* Incoming Email */}
                                 <div className="border rounded-lg p-4 bg-background">
