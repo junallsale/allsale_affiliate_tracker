@@ -1,5 +1,5 @@
 /**
- * Contract PDF generation using PDFKit
+ * Contract PDF generation using jsPDF (works in Vercel serverless)
  */
 import crypto from 'crypto';
 
@@ -44,106 +44,131 @@ export function generateContractHash(data: ContractData): string {
   return crypto.createHash('sha256').update(hashInput).digest('hex');
 }
 
-/** Generate contract PDF as Buffer */
+/** Generate contract PDF as Buffer using jsPDF */
 export async function generateContractPdf(data: ContractData, contractHash: string): Promise<Buffer> {
-  // Dynamic import for PDFKit (Node.js only)
-  const PDFDocument = (await import('pdfkit')).default;
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
 
-  return new Promise<Buffer>(async (resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ size: 'LETTER', margin: 60 });
-      const chunks: Buffer[] = [];
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 20;
+  const contentWidth = pageWidth - margin * 2;
+  let y = 20;
 
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      // ── Header ──
-      doc.fontSize(20).font('Helvetica-Bold').text('ALLSALE', { align: 'center' });
-      doc.fontSize(11).font('Helvetica').text('Affiliate Creator Agreement', { align: 'center' });
-      doc.moveDown(0.5);
-      doc.moveTo(60, doc.y).lineTo(552, doc.y).stroke('#cccccc');
-      doc.moveDown(1);
-
-      // ── Parties ──
-      doc.fontSize(12).font('Helvetica-Bold').text('Parties');
-      doc.moveDown(0.3);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Brand: ${data.brandName}`);
-      doc.text(`Creator: ${data.legalName} (@${data.creatorHandle})`);
-      doc.text(`Project: ${data.projectName}`);
-      doc.moveDown(1);
-
-      // ── Deliverables ──
-      doc.fontSize(12).font('Helvetica-Bold').text('Deliverables');
-      doc.moveDown(0.3);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Content Type: ${data.contentType === 'shoppable_video' ? 'Shoppable Video' : 'LIVE Shopping'}`);
-      doc.text(`Number of Videos: ${data.assignedVideoCount}`);
-      if (data.products.length > 0) {
-        doc.text(`Products: ${data.products.join(', ')}`);
-      }
-      if (data.uploadDeadline) {
-        doc.text(`Upload Deadline: ${new Date(data.uploadDeadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`);
-      }
-      doc.moveDown(1);
-
-      // ── Compensation ──
-      doc.fontSize(12).font('Helvetica-Bold').text('Compensation');
-      doc.moveDown(0.3);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Total Fee: $${data.contractAmount.toLocaleString()}`);
-      doc.text(`Advance Payment: $${data.advancePayment.toLocaleString()} (paid within 3 business days of signing)`);
-      doc.text(`Remaining Payment: $${data.remainingPayment.toLocaleString()} (paid within 3 business days after content submission)`);
-      if (data.commissionRate > 0) {
-        doc.text(`Commission Rate: ${data.commissionRate}% of GMV`);
-      }
-      doc.text(`Payment Method: PayPal (${data.paymentEmail})`);
-      doc.moveDown(1);
-
-      // ── Terms ──
-      doc.fontSize(12).font('Helvetica-Bold').text('Terms & Conditions');
-      doc.moveDown(0.3);
-      doc.fontSize(9).font('Helvetica');
-      doc.text('1. Creator agrees to produce and deliver the specified content according to the brand\'s content guidelines.');
-      doc.text('2. Creator grants the brand permission to use the content for promotional purposes including Spark Ads.');
-      doc.text('3. Creator is responsible for all applicable taxes on compensation received.');
-      doc.text('4. Either party may terminate this agreement with written notice. Compensation will be prorated for completed work.');
-      doc.text('5. All content must comply with TikTok\'s community guidelines and FTC disclosure requirements.');
-      doc.moveDown(1.5);
-
-      // ── Signature ──
-      doc.fontSize(12).font('Helvetica-Bold').text('Signature');
-      doc.moveDown(0.3);
-
-      // Try to embed signature image
-      try {
-        const sigRes = await fetch(data.signatureUrl);
-        if (sigRes.ok) {
-          const sigBuffer = Buffer.from(await sigRes.arrayBuffer());
-          doc.image(sigBuffer, { width: 200, height: 60 });
-        }
-      } catch {
-        doc.fontSize(10).font('Helvetica-Oblique').text('[Signature on file]');
-      }
-
-      doc.moveDown(0.5);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Name: ${data.legalName}`);
-      doc.text(`Date: ${new Date(data.signedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}`);
-      doc.text(`Email: ${data.contractEmail}`);
-      doc.moveDown(2);
-
-      // ── Document Hash ──
-      doc.moveTo(60, doc.y).lineTo(552, doc.y).stroke('#cccccc');
-      doc.moveDown(0.5);
-      doc.fontSize(7).font('Helvetica').fillColor('#888888');
-      doc.text(`Document Integrity Hash (SHA-256): ${contractHash}`, { align: 'center' });
-      doc.text('This hash verifies that the contract contents have not been altered since signing.', { align: 'center' });
-
-      doc.end();
-    } catch (err) {
-      reject(err);
+  const addLine = (text: string, fontSize = 10, style: 'normal' | 'bold' = 'normal') => {
+    doc.setFontSize(fontSize);
+    doc.setFont('helvetica', style);
+    const lines = doc.splitTextToSize(text, contentWidth);
+    for (const line of lines) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      doc.text(line, margin, y);
+      y += fontSize * 0.45;
     }
+  };
+
+  const addGap = (mm = 4) => { y += mm; };
+
+  // ── Header ──
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('ALLSALE', pageWidth / 2, y, { align: 'center' });
+  y += 7;
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Affiliate Creator Agreement', pageWidth / 2, y, { align: 'center' });
+  y += 5;
+  doc.setDrawColor(200);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  // ── Parties ──
+  addLine('Parties', 13, 'bold');
+  addGap(2);
+  addLine(`Brand: ${data.brandName}`);
+  addLine(`Creator: ${data.legalName} (@${data.creatorHandle})`);
+  addLine(`Project: ${data.projectName}`);
+  addGap(6);
+
+  // ── Deliverables ──
+  addLine('Deliverables', 13, 'bold');
+  addGap(2);
+  addLine(`Content Type: ${data.contentType === 'shoppable_video' ? 'Shoppable Video' : 'LIVE Shopping'}`);
+  addLine(`Number of Videos: ${data.assignedVideoCount}`);
+  if (data.products.length > 0) {
+    addLine(`Products: ${data.products.join(', ')}`);
+  }
+  if (data.uploadDeadline) {
+    addLine(`Upload Deadline: ${new Date(data.uploadDeadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`);
+  }
+  addGap(6);
+
+  // ── Compensation ──
+  addLine('Compensation', 13, 'bold');
+  addGap(2);
+  addLine(`Total Fee: $${data.contractAmount.toLocaleString()}`);
+  addLine(`Advance Payment: $${data.advancePayment.toLocaleString()} (within 3 business days of signing)`);
+  addLine(`Remaining Payment: $${data.remainingPayment.toLocaleString()} (within 3 business days after content submission)`);
+  if (data.commissionRate > 0) {
+    addLine(`Commission Rate: ${data.commissionRate}% of GMV`);
+  }
+  addLine(`Payment Method: PayPal (${data.paymentEmail})`);
+  addGap(6);
+
+  // ── Terms ──
+  addLine('Terms & Conditions', 13, 'bold');
+  addGap(2);
+  doc.setFontSize(9);
+  const terms = [
+    '1. Creator agrees to produce and deliver the specified content according to the brand\'s content guidelines.',
+    '2. Creator grants the brand permission to use the content for promotional purposes including Spark Ads.',
+    '3. Creator is responsible for all applicable taxes on compensation received.',
+    '4. Either party may terminate this agreement with written notice. Compensation will be prorated for completed work.',
+    '5. All content must comply with TikTok\'s community guidelines and FTC disclosure requirements.',
+  ];
+  for (const term of terms) {
+    addLine(term, 9);
+    addGap(1);
+  }
+  addGap(8);
+
+  // ── Signature ──
+  addLine('Signature', 13, 'bold');
+  addGap(3);
+
+  // Try to embed signature image
+  try {
+    const sigRes = await fetch(data.signatureUrl);
+    if (sigRes.ok) {
+      const sigBuffer = Buffer.from(await sigRes.arrayBuffer());
+      const base64 = sigBuffer.toString('base64');
+      const imgData = `data:image/png;base64,${base64}`;
+      doc.addImage(imgData, 'PNG', margin, y, 60, 18);
+      y += 22;
+    }
+  } catch {
+    addLine('[Signature on file]', 10);
+    addGap(2);
+  }
+
+  const signDate = new Date(data.signedAt).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
   });
+  addLine(`Name: ${data.legalName}`);
+  addLine(`Date: ${signDate}`);
+  addLine(`Email: ${data.contractEmail}`);
+  addGap(10);
+
+  // ── Document Hash ──
+  doc.setDrawColor(200);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 5;
+  doc.setFontSize(7);
+  doc.setTextColor(136);
+  doc.text(`Document Integrity Hash (SHA-256): ${contractHash}`, pageWidth / 2, y, { align: 'center' });
+  y += 3;
+  doc.text('This hash verifies that the contract contents have not been altered since signing.', pageWidth / 2, y, { align: 'center' });
+
+  // Return as Buffer
+  const arrayBuffer = doc.output('arraybuffer');
+  return Buffer.from(arrayBuffer);
 }
