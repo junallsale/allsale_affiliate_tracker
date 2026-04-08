@@ -31,6 +31,7 @@ interface PCData {
   remaining_payment: number;
   commission_rate: number;
   spark_ads_duration: number | null;
+  contract_notes: string | null;
   payment_email: string | null;
   status: string;
   legal_name: string | null;
@@ -554,6 +555,9 @@ export default function CreatorPublicPage() {
                   <div className="space-y-1 text-muted-foreground">
                     <p>• Tag the brand official account</p>
                     <p>• Spark Ads access: must share after posting{pcData?.spark_ads_duration ? ` (${pcData.spark_ads_duration} days)` : ''}</p>
+                    {pcData?.contract_notes && (
+                      <p>• {pcData.contract_notes}</p>
+                    )}
                   </div>
                 </div>
 

@@ -78,6 +78,7 @@ export default function ProjectDetailPage() {
     contact_point: '',
     communication_link: '',
     payment_email: '',
+    contract_notes: '',
   });
   const [addingCreator, setAddingCreator] = useState(false);
 
@@ -404,6 +405,7 @@ export default function ProjectDetailPage() {
           contact_point: newCreatorForm.contact_point.trim() || null,
           communication_link: newCreatorForm.communication_link.trim() || null,
           payment_email: newCreatorForm.payment_email.trim() || null,
+          contract_notes: newCreatorForm.contract_notes.trim() || null,
           status: 'pending',
           ...(newCreatorForm.contract_amount === 0 ? { contract_sent: true, signed_at: new Date().toISOString() } : {}),
         })
@@ -421,7 +423,7 @@ export default function ProjectDetailPage() {
         await supabase.from('project_creator_products').insert(productInserts);
       }
 
-      setNewCreatorForm({ name: '', email: '', tiktok_handle: '', assigned_video_count: 1, content_type: 'shoppable_video', contract_amount: 0, advance_payment: 0, remaining_payment: 0, commission_rate: 0, contact_point: '', communication_link: '', payment_email: '' });
+      setNewCreatorForm({ name: '', email: '', tiktok_handle: '', assigned_video_count: 1, content_type: 'shoppable_video', contract_amount: 0, advance_payment: 0, remaining_payment: 0, commission_rate: 0, contact_point: '', communication_link: '', payment_email: '', contract_notes: '' });
       setSelectedProductIds(new Set());
       setShowAddCreator(false);
       await fetchProjectData();
@@ -1608,6 +1610,19 @@ export default function ProjectDetailPage() {
                   disabled={addingCreator}
                 />
                 <p className="text-xs text-muted-foreground">Email for receiving payment (e.g., PayPal)</p>
+              </div>
+
+              {/* Contract Notes */}
+              <div className="space-y-2">
+                <Label>Additional Contract Terms</Label>
+                <textarea
+                  className="flex w-full rounded-md border px-3 py-2 text-sm bg-background min-h-[80px] resize-y"
+                  placeholder="e.g. Including TikTok ads code and usage for our owned channels..."
+                  value={newCreatorForm.contract_notes}
+                  onChange={(e) => setNewCreatorForm((prev) => ({ ...prev, contract_notes: e.target.value }))}
+                  disabled={addingCreator}
+                />
+                <p className="text-xs text-muted-foreground">These terms will appear in the contract the creator signs.</p>
               </div>
 
               {/* Product Assignment */}

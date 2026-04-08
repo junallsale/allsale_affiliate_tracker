@@ -62,6 +62,7 @@ interface PCFullData {
   shipping_name: string | null;
   shipping_address: string | null;
   shipping_phone: string | null;
+  contract_notes: string | null;
   status: string;
   created_at: string;
   creators: Creator;
@@ -1117,12 +1118,36 @@ export default function CreatorDetailPage() {
                     )}
                   </div>
                 </div>
+                {pcData.contract_notes && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Additional Terms</p>
+                    <p className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-2">{pcData.contract_notes}</p>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="text-center py-4 text-muted-foreground">
-                <PenLine className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Not yet signed</p>
-                <p className="text-xs mt-1">The creator has not signed the agreement yet.</p>
+              <div className="space-y-4">
+                <div className="text-center py-4 text-muted-foreground">
+                  <PenLine className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Not yet signed</p>
+                  <p className="text-xs mt-1">The creator has not signed the agreement yet.</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Additional Contract Terms</p>
+                  <textarea
+                    className="flex w-full rounded-md border px-3 py-2 text-sm bg-background min-h-[60px] resize-y"
+                    placeholder="e.g. Including TikTok ads code and usage for our owned channels..."
+                    defaultValue={pcData.contract_notes || ''}
+                    onBlur={async (e) => {
+                      const val = e.target.value.trim() || null;
+                      if (val !== (pcData.contract_notes || null)) {
+                        await supabase.from('project_creators').update({ contract_notes: val }).eq('id', pcData.id);
+                        setPcData(prev => prev ? { ...prev, contract_notes: val } as PCFullData : prev);
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">These terms will appear in the contract. Auto-saves on blur.</p>
+                </div>
               </div>
             )}
           </CardContent>

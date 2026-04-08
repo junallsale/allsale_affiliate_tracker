@@ -106,7 +106,7 @@ async function generateAndSendContract(
     .from("project_creators")
     .select(`
       id, contract_amount, advance_payment, remaining_payment, commission_rate,
-      assigned_video_count, content_type,
+      assigned_video_count, content_type, contract_notes,
       creator:creators(name, tiktok_handle, email),
       project:projects(name, submission_deadline, brand:brands(name)),
       project_creator_products:project_creator_products(product:products(name))
@@ -141,6 +141,7 @@ async function generateAndSendContract(
     signatureUrl: params.signatureUrl,
     shippingName: params.shippingName,
     shippingAddress: params.shippingAddress,
+    contractNotes: (pc as any).contract_notes || undefined,
   };
 
   // Generate hash

@@ -23,6 +23,7 @@ export interface ContractData {
   signatureUrl: string;
   shippingName?: string;
   shippingAddress?: string;
+  contractNotes?: string;
 }
 
 /** Generate SHA-256 hash of contract data for integrity verification */
@@ -127,6 +128,12 @@ export async function generateContractPdf(data: ContractData, contractHash: stri
   for (const term of terms) {
     addLine(term, 9);
     addGap(1);
+  }
+  if (data.contractNotes) {
+    addGap(3);
+    addLine('Additional Terms', 11, 'bold');
+    addGap(2);
+    addLine(data.contractNotes, 9);
   }
   addGap(8);
 
