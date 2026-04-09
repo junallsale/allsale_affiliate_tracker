@@ -1223,6 +1223,22 @@ export default function CreatorDetailPage() {
                           Product Link
                         </a>
                       )}
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-xs text-muted-foreground">Sample:</span>
+                        <input
+                          className="text-xs text-blue-600 bg-transparent border-b border-transparent hover:border-muted-foreground/30 focus:border-primary focus:outline-none px-0 py-0 flex-1 min-w-0"
+                          defaultValue={(product as any).sample_invitation_url || ''}
+                          placeholder="Paste sample invitation URL..."
+                          onClick={(e) => e.stopPropagation()}
+                          onBlur={async (e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== ((product as any).sample_invitation_url || null)) {
+                              await supabase.from('products').update({ sample_invitation_url: val }).eq('id', product.id);
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        />
+                      </div>
                     </div>
                     <Button
                       variant="ghost"

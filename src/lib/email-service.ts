@@ -26,28 +26,28 @@ interface ComposeResult {
   variables: Record<string, string>;
 }
 
-/** Fetch all active sample links for a project as HTML list items */
-async function getSampleLinksHtml(supabase: ReturnType<typeof getServiceClient>, projectId: string): Promise<string> {
-  const { data: sampleLinks } = await supabase
-    .from('sample_invitation_links')
-    .select('url, label')
-    .eq('project_id', projectId)
-    .eq('is_active', true)
-    .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
-    .order('created_at', { ascending: true });
+/** Build sample links HTML from assigned products' sample_invitation_url */
+function getProductSampleLinksHtml(products: any[]): { sampleLinkSection: string; sampleLinksSection: string } {
+  const links = products
+    .map(p => p.product)
+    .filter(p => p?.sample_invitation_url)
+    .map(p => ({ url: p.sample_invitation_url, label: p.sample_invitation_label || p.name }));
 
-  if (!sampleLinks?.length) return '';
+  if (!links.length) return { sampleLinkSection: '', sampleLinksSection: '' };
 
-  if (sampleLinks.length === 1) {
-    const link = sampleLinks[0];
-    return ` <a href="${link.url}">${link.label || 'Request Sample'}</a>`;
+  if (links.length === 1) {
+    const html = ` <a href="${links[0].url}">${links[0].label}</a>`;
+    return {
+      sampleLinkSection: `<li><strong>Sample invitation:</strong>${html}</li>`,
+      sampleLinksSection: html,
+    };
   }
 
-  // Multiple links
-  const items = sampleLinks
-    .map(link => `<li><a href="${link.url}">${link.label || link.url}</a></li>`)
-    .join('');
-  return `<ul>${items}</ul>`;
+  const items = links.map(l => `<a href="${l.url}">${l.label}</a>`).join(', ');
+  return {
+    sampleLinkSection: `<li><strong>Sample invitation:</strong> ${items}</li>`,
+    sampleLinksSection: items,
+  };
 }
 
 /** Compose an email draft without sending */
@@ -61,7 +61,7 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
       id, unique_slug, contract_amount, commission_rate, assigned_video_count, advance_payment,
       creator:creators(name, email, tiktok_handle),
       project:projects(id, name, require_shipping_address, submission_deadline, welcome_email_subject, welcome_email_body, brand:brands(name)),
-      project_creator_products:project_creator_products(product:products(name, content_guide_url))
+      project_creator_products:project_creator_products(product:products(name, content_guide_url, sample_invitation_url, sample_invitation_label))
     `)
     .eq('id', params.projectCreatorId)
     .single();
@@ -101,16 +101,10 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
   const productName = firstProduct?.name || '';
   const contentGuideUrl = firstProduct?.content_guide_url || '';
 
-  // All sample invitation links (not just 1)
-  let sampleLinkSection = '';
-  let sampleLinksSection = '';
-  if (project && project.require_shipping_address === false) {
-    const linksHtml = await getSampleLinksHtml(supabase, project.id);
-    if (linksHtml) {
-      sampleLinkSection = `<li><strong>Sample invitation:</strong>${linksHtml}</li>`;
-      sampleLinksSection = linksHtml;
-    }
-  }
+  // Sample links from assigned products (not project-level)
+  const { sampleLinkSection, sampleLinksSection } = project?.require_shipping_address === false
+    ? getProductSampleLinksHtml(products)
+    : { sampleLinkSection: '', sampleLinksSection: '' };
 
   // Content guide section
   const contentGuideSection = contentGuideUrl

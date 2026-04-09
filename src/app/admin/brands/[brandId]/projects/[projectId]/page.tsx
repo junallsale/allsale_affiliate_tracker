@@ -927,62 +927,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* Sample Invitation Links */}
-        {canManageCreators && (
-          <div className="max-w-7xl mx-auto px-6 pt-4">
-            <Card>
-              <CardHeader className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Link2 className="w-4 h-4" /> Sample Invitation Links
-                    <Badge variant="secondary" className="text-xs">{sampleLinks.length}</Badge>
-                  </CardTitle>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowAddSampleLink(true)}>
-                    <Plus className="w-3 h-3 mr-1" /> Add Link
-                  </Button>
-                </div>
-              </CardHeader>
-              {sampleLinks.length > 0 && (
-                <CardContent className="px-4 pb-3 pt-0">
-                  <div className="space-y-2">
-                    {sampleLinks.map(link => (
-                      <div key={link.id} className="flex items-center gap-3 text-sm border rounded-lg px-3 py-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate text-xs">
-                              {link.label || link.url}
-                            </a>
-                            <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
-                          </div>
-                          <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
-                            {link.total_quantity != null && <span>Used: {link.used_count}/{link.total_quantity}</span>}
-                            {link.expires_at && (
-                              <span className={new Date(link.expires_at) < new Date() ? 'text-red-500' : ''}>
-                                Expires: {new Date(link.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => toggleSampleLinkActive(link.id, !link.is_active)}
-                          className={cn(
-                            'text-xs px-2 py-0.5 rounded-full border transition-colors',
-                            link.is_active ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-muted-foreground/20 text-muted-foreground'
-                          )}
-                        >
-                          {link.is_active ? 'Active' : 'Inactive'}
-                        </button>
-                        <button onClick={() => deleteSampleLink(link.id)} className="text-muted-foreground hover:text-red-500">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          </div>
-        )}
+        {/* Sample invitation links are now managed per-product in creator detail page */}
 
         <div className="max-w-7xl mx-auto p-6 space-y-6">
           {/* Stats Cards */}

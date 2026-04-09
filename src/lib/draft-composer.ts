@@ -33,7 +33,7 @@ async function getProjectCreatorContext(projectCreatorId: string): Promise<Draft
       unique_slug, contract_amount, commission_rate, assigned_video_count,
       creator:creators(name, tiktok_handle),
       project:projects(id, name, submission_deadline, require_shipping_address, brand:brands(name)),
-      project_creator_products:project_creator_products(product:products(name, content_guide_url))
+      project_creator_products:project_creator_products(product:products(name, content_guide_url, sample_invitation_url, sample_invitation_label))
     `)
     .eq('id', projectCreatorId)
     .single();
@@ -47,23 +47,19 @@ async function getProjectCreatorContext(projectCreatorId: string): Promise<Draft
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://allsale-affiliate-tracker.vercel.app';
 
-  // Get all active sample links
+  // Get sample links from assigned products
   let sampleLinksHtml = '';
   if (project && !project.require_shipping_address) {
-    const { data: links } = await supabase
-      .from('sample_invitation_links')
-      .select('url, label')
-      .eq('project_id', project.id)
-      .eq('is_active', true)
-      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
+    const productLinks = products
+      .map((p: any) => p.product)
+      .filter((p: any) => p?.sample_invitation_url)
+      .map((p: any) => ({ url: p.sample_invitation_url, label: p.sample_invitation_label || p.name }));
 
-    if (links?.length) {
-      if (links.length === 1) {
-        sampleLinksHtml = `<li><strong>Sample invitation:</strong> <a href="${links[0].url}">${links[0].label || 'Request Sample'}</a></li>`;
-      } else {
-        const items = links.map(l => `<a href="${l.url}">${l.label || l.url}</a>`).join(', ');
-        sampleLinksHtml = `<li><strong>Sample invitation:</strong> ${items}</li>`;
-      }
+    if (productLinks.length === 1) {
+      sampleLinksHtml = `<li><strong>Sample invitation:</strong> <a href="${productLinks[0].url}">${productLinks[0].label}</a></li>`;
+    } else if (productLinks.length > 1) {
+      const items = productLinks.map((l: any) => `<a href="${l.url}">${l.label}</a>`).join(', ');
+      sampleLinksHtml = `<li><strong>Sample invitation:</strong> ${items}</li>`;
     }
   }
 
