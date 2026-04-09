@@ -257,7 +257,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         )}
 
-        <nav className="space-y-1 px-3 py-4 flex-1">
+        <nav className="space-y-1 px-3 py-4 flex-1 overflow-y-auto">
           {navLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname.startsWith(link.href);
