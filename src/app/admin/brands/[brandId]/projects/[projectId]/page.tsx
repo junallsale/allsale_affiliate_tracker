@@ -378,13 +378,41 @@ export default function ProjectDetailPage() {
       // Check if already assigned to this project
       const { data: existingPc } = await supabase
         .from('project_creators')
-        .select('id')
+        .select('id, is_deleted')
         .eq('project_id', projectId)
         .eq('creator_id', creatorId)
         .single();
 
-      if (existingPc) {
+      if (existingPc && !existingPc.is_deleted) {
         alert('This creator is already added to this project.');
+        return;
+      }
+
+      // Re-activate soft-deleted record
+      if (existingPc && existingPc.is_deleted) {
+        const { error: restoreError } = await supabase
+          .from('project_creators')
+          .update({
+            is_deleted: false,
+            assigned_video_count: newCreatorForm.assigned_video_count,
+            content_type: newCreatorForm.content_type,
+            contract_amount: newCreatorForm.contract_amount,
+            advance_payment: newCreatorForm.advance_payment,
+            remaining_payment: newCreatorForm.remaining_payment,
+            commission_rate: newCreatorForm.commission_rate,
+            contact_point: newCreatorForm.contact_point.trim() || null,
+            communication_link: newCreatorForm.communication_link.trim() || null,
+            payment_email: newCreatorForm.payment_email.trim() || null,
+            contract_notes: newCreatorForm.contract_notes.trim() || null,
+            status: 'pending',
+          })
+          .eq('id', existingPc.id);
+
+        if (restoreError) throw restoreError;
+
+        await fetchData();
+        setShowAddCreator(false);
+        setNewCreatorForm({ name: '', email: '', tiktok_handle: '', assigned_video_count: 1, content_type: 'shoppable_video', contract_amount: 0, advance_payment: 0, remaining_payment: 0, commission_rate: 0, contact_point: '', communication_link: '', payment_email: '', contract_notes: '' });
         return;
       }
 
