@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { composeEmail } from '@/lib/email-service';
+import { composeEmail, getThreadInfo } from '@/lib/email-service';
 import { escalateToSlack } from '@/lib/slack';
 
 function getServiceClient() {
@@ -76,6 +76,9 @@ export async function GET(req: NextRequest) {
 
     if (existingDrafts?.length) continue;
 
+    // Get thread info for this project_creator (to reply in existing thread)
+    const threadInfo = await getThreadInfo(pc.id);
+
     // ── Case 1: Contract not signed ──
     if (!pc.signed_at) {
       try {
@@ -89,6 +92,8 @@ export async function GET(req: NextRequest) {
           draft_body_html: draft.bodyHtml,
           classification: 'reminder',
           status: 'pending',
+          gmail_thread_id: threadInfo.gmailThreadId,
+          in_reply_to: threadInfo.inReplyTo,
         });
         remindSign++;
       } catch {}
@@ -140,6 +145,8 @@ export async function GET(req: NextRequest) {
           draft_body_html: draft.bodyHtml,
           classification: 'reminder',
           status: 'pending',
+          gmail_thread_id: threadInfo.gmailThreadId,
+          in_reply_to: threadInfo.inReplyTo,
         });
         remindPostSign++;
       } catch {}
@@ -159,6 +166,8 @@ export async function GET(req: NextRequest) {
           draft_body_html: draft.bodyHtml,
           classification: 'reminder',
           status: 'pending',
+          gmail_thread_id: threadInfo.gmailThreadId,
+          in_reply_to: threadInfo.inReplyTo,
         });
         remindPost++;
       } catch {}

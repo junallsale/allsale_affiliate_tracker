@@ -275,8 +275,8 @@ export default function EmailQueuePage() {
           subject: editSubject,
           bodyHtml: editBody,
           projectCreatorId: sendDraft.project_creator?.id,
-          threadId: sendDraft.email_message?.gmail_thread_id,
-          inReplyTo: sendDraft.email_message?.message_id_header || undefined,
+          threadId: sendDraft.email_message?.gmail_thread_id || (sendDraft as any).gmail_thread_id,
+          inReplyTo: sendDraft.email_message?.message_id_header || (sendDraft as any).in_reply_to || undefined,
         }),
       });
 
@@ -676,8 +676,8 @@ export default function EmailQueuePage() {
                                       accounts={accounts}
                                       defaultAccountId={sendAccountId}
                                       toEmail={em?.from_email || ''}
-                                      threadId={em?.gmail_thread_id}
-                                      inReplyTo={em?.message_id_header}
+                                      threadId={em?.gmail_thread_id || (d as any).gmail_thread_id}
+                                      inReplyTo={em?.message_id_header || (d as any).in_reply_to}
                                       originalCc={em?.cc_emails}
                                       onSent={() => fetchData()}
                                     />

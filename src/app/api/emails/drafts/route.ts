@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     // 1. Fetch drafts
     let query = supabase
       .from('email_drafts')
-      .select('id, draft_subject, draft_body_html, classification, status, created_at, reviewed_at, email_message_id, project_creator_id')
+      .select('id, draft_subject, draft_body_html, classification, status, created_at, reviewed_at, email_message_id, project_creator_id, gmail_thread_id, in_reply_to')
       .order('created_at', { ascending: false })
       .limit(limit);
 

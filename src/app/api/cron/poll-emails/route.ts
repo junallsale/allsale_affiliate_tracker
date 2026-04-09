@@ -214,6 +214,8 @@ export async function GET(req: NextRequest) {
             draft_body_html: draft.bodyHtml,
             classification,
             status: 'pending',
+            gmail_thread_id: email.threadId || null,
+            in_reply_to: email.messageIdHeader || null,
           });
           totalDrafts++;
         }

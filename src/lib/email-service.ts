@@ -12,6 +12,25 @@ function getServiceClient() {
   );
 }
 
+/** Get the latest thread info for a project_creator to enable reply threading */
+export async function getThreadInfo(projectCreatorId: string): Promise<{ gmailThreadId: string | null; inReplyTo: string | null }> {
+  const supabase = getServiceClient();
+  const { data } = await supabase
+    .from('email_messages')
+    .select('gmail_thread_id, message_id_header')
+    .eq('project_creator_id', projectCreatorId)
+    .not('gmail_thread_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (!data?.length) return { gmailThreadId: null, inReplyTo: null };
+
+  return {
+    gmailThreadId: data[0].gmail_thread_id,
+    inReplyTo: data[0].message_id_header || null,
+  };
+}
+
 interface ComposeParams {
   projectCreatorId: string;
   templateSlug: string;
