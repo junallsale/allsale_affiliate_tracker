@@ -20,12 +20,12 @@ interface KeywordRule {
 const KEYWORD_RULES: KeywordRule[] = [
   {
     classification: 'contract_modification',
-    keywords: ['change contract', 'modify terms', 'modify contract', 'different terms', 'revise contract', 'update contract', 'amendment'],
+    keywords: ['change contract', 'modify terms', 'modify contract', 'different terms', 'revise contract', 'update contract', 'amendment', 'align on the terms', 'standard structure', 'counter offer', 'counteroffer', 'spark ad usage', 'spark ads usage'],
     weight: 10,
   },
   {
     classification: 'price_negotiation',
-    keywords: ['rate', 'price', 'how much', 'budget', 'payment', 'negotiate', 'pricing', 'cost', 'fee', 'compensation', 'pay me'],
+    keywords: ['rate', 'price', 'how much', 'budget', 'payment', 'negotiate', 'pricing', 'cost', 'fee', 'compensation', 'pay me', 'videos for $', 'package', 'standard rate', 'current rate'],
     weight: 5,
   },
   {
