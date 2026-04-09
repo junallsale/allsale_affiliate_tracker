@@ -112,7 +112,51 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // 2. Match by creator email
+        // 2. Match by thread ref [#XXXXXXXX] in subject — exact project_creator match
+        if (!pcMatch && email.subject) {
+          const refMatch = email.subject.match(/\[#([A-F0-9]{8})\]/i);
+          if (refMatch) {
+            const pcIdPrefix = refMatch[1].toLowerCase();
+            const { data: pcs } = await supabase
+              .from('project_creators')
+              .select(pcSelect)
+              .ilike('id', `${pcIdPrefix}%`)
+              .limit(1);
+            if (pcs?.length) pcMatch = pcs[0];
+          }
+        }
+
+        // 3. Match by subject containing brand name — disambiguate when creator has multiple projects
+        if (!pcMatch && email.subject) {
+          const { data: creators } = await supabase
+            .from('creators')
+            .select('id')
+            .ilike('email', fromEmail)
+            .limit(1);
+
+          if (creators?.length) {
+            const { data: pcs } = await supabase
+              .from('project_creators')
+              .select(pcSelect)
+              .eq('creator_id', creators[0].id)
+              .order('created_at', { ascending: false });
+
+            if (pcs && pcs.length > 1) {
+              // Multiple project_creators — try to match brand name in subject
+              const subjectLower = email.subject.toLowerCase();
+              const brandMatch = pcs.find((pc: any) => {
+                const brandName = pc.project?.brand?.name;
+                return brandName && subjectLower.includes(brandName.toLowerCase());
+              });
+              if (brandMatch) pcMatch = brandMatch;
+              else pcMatch = pcs[0]; // fallback to most recent
+            } else if (pcs?.length) {
+              pcMatch = pcs[0];
+            }
+          }
+        }
+
+        // 4. Match by creator email (simple — single project creator)
         if (!pcMatch) {
           const { data: creators } = await supabase
             .from('creators')
