@@ -1,5 +1,5 @@
 /**
- * Email classifier — keyword matching + Claude API fallback
+ * Email classifier — AI-powered using Claude Haiku
  */
 
 export type EmailClassification =
@@ -11,73 +11,12 @@ export type EmailClassification =
   | 'shipping_info'
   | 'other';
 
-interface KeywordRule {
-  classification: EmailClassification;
-  keywords: string[];
-  weight: number;
-}
-
-const KEYWORD_RULES: KeywordRule[] = [
-  {
-    classification: 'contract_modification',
-    keywords: ['change contract', 'modify terms', 'modify contract', 'different terms', 'revise contract', 'update contract', 'amendment', 'align on the terms', 'standard structure', 'counter offer', 'counteroffer', 'spark ad usage', 'spark ads usage'],
-    weight: 10,
-  },
-  {
-    classification: 'price_negotiation',
-    keywords: ['rate', 'price', 'how much', 'budget', 'payment', 'negotiate', 'pricing', 'cost', 'fee', 'compensation', 'pay me', 'videos for $', 'package', 'standard rate', 'current rate'],
-    weight: 5,
-  },
-  {
-    classification: 'shipping_info',
-    keywords: ['address', 'ship to', 'delivery', 'shipping', 'send sample to', 'my address', 'mailing address'],
-    weight: 7,
-  },
-  {
-    classification: 'sample_request',
-    keywords: ['sample', 'want to try', 'send me product', 'product sample', 'try the product', 'receive sample', 'get sample'],
-    weight: 6,
-  },
-  {
-    classification: 'content_brief',
-    keywords: ['content guide', 'brief', 'what should i post', 'guidelines', 'content requirements', 'talking points', 'script', 'what to film'],
-    weight: 6,
-  },
-  {
-    classification: 'interest',
-    keywords: ['interested', "i'd love to", 'sounds great', 'count me in', 'sign me up', 'i want to', 'love to work', 'happy to', 'down to collaborate'],
-    weight: 3,
-  },
-];
-
-/** Tier 1: Keyword-based classification */
-function classifyByKeywords(text: string): { classification: EmailClassification; confidence: number } {
-  const lower = text.toLowerCase();
-  let bestMatch: EmailClassification = 'other';
-  let bestScore = 0;
-
-  for (const rule of KEYWORD_RULES) {
-    let score = 0;
-    for (const kw of rule.keywords) {
-      if (lower.includes(kw)) {
-        score += rule.weight;
-      }
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = rule.classification;
-    }
-  }
-
-  // Confidence: 0-1 scale based on score
-  const confidence = Math.min(bestScore / 15, 1);
-  return { classification: bestMatch, confidence };
-}
-
-/** Tier 2: Claude API classification (fallback) */
-async function classifyWithClaude(text: string): Promise<EmailClassification> {
+/** Classify email using Claude Haiku */
+export async function classifyEmail(subject: string, bodyText: string): Promise<EmailClassification> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return 'other';
+
+  const fullText = `Subject: ${subject}\n\nBody:\n${(bodyText || '').slice(0, 1000)}`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -92,19 +31,18 @@ async function classifyWithClaude(text: string): Promise<EmailClassification> {
         max_tokens: 50,
         messages: [{
           role: 'user',
-          content: `Classify this email from a TikTok creator into exactly one category. Reply with ONLY the category name, nothing else.
+          content: `You are classifying an email from a TikTok creator who is in the process of a paid brand collaboration. Reply with ONLY the category name, nothing else.
 
 Categories:
-- price_negotiation (asking about rates, payment, pricing)
-- interest (expressing interest in collaboration)
-- sample_request (requesting product samples)
-- content_brief (asking about content guidelines, what to post)
-- contract_modification (wanting to change contract terms)
-- shipping_info (providing or asking about shipping/delivery address)
-- other (doesn't fit any category)
+- contract_modification — Creator is negotiating, counter-offering, requesting changes to rate/terms/contract, proposing different pricing, or discussing Spark Ad usage terms. This includes any attempt to change the agreed-upon deal.
+- price_negotiation — Creator is asking about rates, payment details, or pricing for the first time (not counter-offering an existing deal).
+- interest — Creator is expressing interest in collaborating, saying yes, or showing enthusiasm.
+- sample_request — Creator is requesting product samples.
+- content_brief — Creator is asking about content guidelines, what to post, or filming instructions.
+- shipping_info — Creator is providing or asking about shipping/delivery address.
+- other — Doesn't fit any category above (auto-replies, unrelated content, etc.)
 
-Email:
-${text.slice(0, 500)}`,
+${fullText}`,
         }],
       }),
     });
@@ -123,16 +61,4 @@ ${text.slice(0, 500)}`,
   } catch {
     return 'other';
   }
-}
-
-/** Main classification function — keywords first, Claude fallback if low confidence */
-export async function classifyEmail(subject: string, bodyText: string): Promise<EmailClassification> {
-  const fullText = `${subject} ${bodyText}`;
-  const { classification, confidence } = classifyByKeywords(fullText);
-
-  // If keyword matching is confident enough, use it
-  if (confidence >= 0.3) return classification;
-
-  // Otherwise, fall back to Claude
-  return classifyWithClaude(fullText);
 }
