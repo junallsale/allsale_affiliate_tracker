@@ -36,18 +36,34 @@ export async function POST(req: NextRequest) {
       inReplyTo,
     });
 
-    // Auto-check contract_sent on first outbound email for this project_creator
+    // Auto-update project_creator on first outbound email
     if (projectCreatorId) {
       try {
         const db = getServiceClient();
+        // Get sender email for contact_point
+        const { data: senderAccount } = await db
+          .from('email_accounts')
+          .select('email')
+          .eq('id', emailAccountId)
+          .single();
+
+        const gmailLink = `https://mail.google.com/mail/u/0/#inbox/${result.messageId}`;
+        const updates: Record<string, unknown> = {
+          contract_sent: true,
+          contract_sent_at: new Date().toISOString(),
+        };
+        // Set contact_point and communication_link on first email
+        if (senderAccount?.email) updates.contact_point = senderAccount.email;
+        updates.communication_link = gmailLink;
+
         const { error: updateErr } = await db
           .from('project_creators')
-          .update({ contract_sent: true, contract_sent_at: new Date().toISOString() })
+          .update(updates)
           .eq('id', projectCreatorId)
           .eq('contract_sent', false);
-        if (updateErr) console.error('contract_sent update failed:', updateErr);
+        if (updateErr) console.error('project_creator update failed:', updateErr);
       } catch (e) {
-        console.error('contract_sent update error:', e);
+        console.error('project_creator update error:', e);
       }
     }
 
