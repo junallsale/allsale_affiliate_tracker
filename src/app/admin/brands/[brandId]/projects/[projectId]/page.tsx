@@ -410,7 +410,7 @@ export default function ProjectDetailPage() {
 
         if (restoreError) throw restoreError;
 
-        await fetchData();
+        await fetchProjectData();
         setShowAddCreator(false);
         setNewCreatorForm({ name: '', email: '', tiktok_handle: '', assigned_video_count: 1, content_type: 'shoppable_video', contract_amount: 0, advance_payment: 0, remaining_payment: 0, commission_rate: 0, contact_point: '', communication_link: '', payment_email: '', contract_notes: '' });
         return;
