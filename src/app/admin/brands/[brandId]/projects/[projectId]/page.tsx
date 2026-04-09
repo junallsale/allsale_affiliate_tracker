@@ -354,6 +354,10 @@ export default function ProjectDetailPage() {
 
         if (existingByHandle) {
           creatorId = existingByHandle.id;
+          // Update email if provided and not already set
+          if (newCreatorForm.email.trim()) {
+            await supabase.from('creators').update({ email: newCreatorForm.email.trim() }).eq('id', creatorId).is('email', null);
+          }
         } else {
           // Create new creator
           const { data: newCreator, error: createError } = await supabase
