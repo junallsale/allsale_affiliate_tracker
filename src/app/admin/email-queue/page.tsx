@@ -57,7 +57,10 @@ const classificationColors: Record<string, string> = {
   sample_request: 'bg-blue-100 text-blue-700',
   content_brief: 'bg-purple-100 text-purple-700',
   contract_modification: 'bg-red-100 text-red-700',
+  contract_signed: 'bg-teal-100 text-teal-700',
   shipping_info: 'bg-orange-100 text-orange-700',
+  payment_inquiry: 'bg-yellow-100 text-yellow-700',
+  posting_update: 'bg-indigo-100 text-indigo-700',
   reminder: 'bg-gray-100 text-gray-700',
   other: 'bg-muted text-muted-foreground',
 };
@@ -599,35 +602,35 @@ export default function EmailQueuePage() {
                                   <TooltipContent>Review and send this reply</TooltipContent>
                                 </Tooltip>
                               )}
+                              {(d.status === 'pending' || d.status === 'escalated') && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      onClick={() => updateDraftStatus(d.id, 'dismissed')}
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Dismiss, no reply needed</TooltipContent>
+                                </Tooltip>
+                              )}
                               {d.status === 'pending' && (
-                                <>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 text-xs"
-                                        onClick={() => updateDraftStatus(d.id, 'dismissed')}
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Dismiss — no reply needed</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 text-xs text-red-600"
-                                        onClick={() => updateDraftStatus(d.id, 'escalated')}
-                                      >
-                                        <AlertTriangle className="w-3 h-3" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Escalate to Slack for manual handling</TooltipContent>
-                                  </Tooltip>
-                                </>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs text-red-600"
+                                      onClick={() => updateDraftStatus(d.id, 'escalated')}
+                                    >
+                                      <AlertTriangle className="w-3 h-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Escalate to Slack for manual handling</TooltipContent>
+                                </Tooltip>
                               )}
                               {d.status === 'sent' && (
                                 <Check className="w-4 h-4 text-emerald-600" />
