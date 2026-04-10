@@ -12,10 +12,27 @@ function getServiceClient() {
   );
 }
 
-/** Get the latest thread info for a project_creator to enable reply threading */
-export async function getThreadInfo(projectCreatorId: string): Promise<{ gmailThreadId: string | null; inReplyTo: string | null }> {
+/** Normalize a subject for use as a reply: ensure "Re: " prefix, avoid double-prefixing. */
+export function toReplySubject(subject: string): string {
+  const trimmed = subject.trim();
+  return /^re:\s/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+}
+
+/**
+ * Get thread info for a project_creator to enable reply threading.
+ *
+ * Returns the latest thread's id + the most recent message_id_header
+ * (for In-Reply-To) + the thread's canonical subject (the first message in
+ * that thread), which is required so Gmail accepts the threadId on send.
+ */
+export async function getThreadInfo(projectCreatorId: string): Promise<{
+  gmailThreadId: string | null;
+  inReplyTo: string | null;
+  originalSubject: string | null;
+}> {
   const supabase = getServiceClient();
-  const { data } = await supabase
+  // Latest row with a thread id — provides thread + (possibly) In-Reply-To
+  const { data: latest } = await supabase
     .from('email_messages')
     .select('gmail_thread_id, message_id_header')
     .eq('project_creator_id', projectCreatorId)
@@ -23,11 +40,25 @@ export async function getThreadInfo(projectCreatorId: string): Promise<{ gmailTh
     .order('created_at', { ascending: false })
     .limit(1);
 
-  if (!data?.length) return { gmailThreadId: null, inReplyTo: null };
+  if (!latest?.length) return { gmailThreadId: null, inReplyTo: null, originalSubject: null };
+
+  const threadId = latest[0].gmail_thread_id as string;
+
+  // First message in that same thread — provides the canonical subject
+  // Gmail's send API requires the new message's Subject to match the thread's Subject
+  // (Re:/Fwd: prefixes are normalized out), otherwise it refuses to attach.
+  const { data: first } = await supabase
+    .from('email_messages')
+    .select('subject')
+    .eq('project_creator_id', projectCreatorId)
+    .eq('gmail_thread_id', threadId)
+    .order('created_at', { ascending: true })
+    .limit(1);
 
   return {
-    gmailThreadId: data[0].gmail_thread_id,
-    inReplyTo: data[0].message_id_header || null,
+    gmailThreadId: threadId,
+    inReplyTo: latest[0].message_id_header || null,
+    originalSubject: first?.[0]?.subject || null,
   };
 }
 
@@ -223,6 +254,7 @@ export async function sendEmailAndRecord(params: SendParams): Promise<{
     project_creator_id: params.projectCreatorId || null,
     gmail_message_id: result.messageId,
     gmail_thread_id: result.threadId,
+    message_id_header: result.messageIdHeader,
     direction: 'outbound',
     from_email: account.email,
     to_email: params.to,

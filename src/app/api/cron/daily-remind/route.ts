@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { composeEmail, getThreadInfo } from '@/lib/email-service';
+import { composeEmail, getThreadInfo, toReplySubject } from '@/lib/email-service';
 import { escalateToSlack } from '@/lib/slack';
 
 function getServiceClient() {
@@ -76,8 +76,14 @@ export async function GET(req: NextRequest) {
 
     if (existingDrafts?.length) continue;
 
-    // Get thread info for this project_creator (to reply in existing thread)
+    // Get thread info for this project_creator (to reply in existing thread).
+    // Gmail requires the new message's Subject to match the thread's Subject
+    // (ignoring Re:/Fwd: prefixes) — otherwise it rejects threadId on send.
+    // When replying to an existing thread, override the template subject with
+    // "Re: <original subject>" so Gmail attaches the reminder to the thread.
     const threadInfo = await getThreadInfo(pc.id);
+    const replySubject = (subject: string) =>
+      threadInfo.originalSubject ? toReplySubject(threadInfo.originalSubject) : subject;
 
     // ── Case 1: Contract not signed ──
     if (!pc.signed_at) {
@@ -88,7 +94,7 @@ export async function GET(req: NextRequest) {
         });
         await supabase.from('email_drafts').insert({
           project_creator_id: pc.id,
-          draft_subject: draft.subject,
+          draft_subject: replySubject(draft.subject),
           draft_body_html: draft.bodyHtml,
           classification: 'reminder',
           status: 'pending',
@@ -141,7 +147,7 @@ export async function GET(req: NextRequest) {
         });
         await supabase.from('email_drafts').insert({
           project_creator_id: pc.id,
-          draft_subject: draft.subject,
+          draft_subject: replySubject(draft.subject),
           draft_body_html: draft.bodyHtml,
           classification: 'reminder',
           status: 'pending',
@@ -162,7 +168,7 @@ export async function GET(req: NextRequest) {
         });
         await supabase.from('email_drafts').insert({
           project_creator_id: pc.id,
-          draft_subject: draft.subject,
+          draft_subject: replySubject(draft.subject),
           draft_body_html: draft.bodyHtml,
           classification: 'reminder',
           status: 'pending',

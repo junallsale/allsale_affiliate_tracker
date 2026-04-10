@@ -25,6 +25,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'emailAccountId, to, subject, bodyHtml required' }, { status: 400 });
     }
 
+    // Gmail threads by threadId alone; In-Reply-To is a cooperating RFC header,
+    // not a precondition. Pass both independently.
     const result = await sendEmailAndRecord({
       emailAccountId,
       to,
@@ -32,8 +34,8 @@ export async function POST(req: NextRequest) {
       subject,
       bodyHtml,
       projectCreatorId,
-      threadId: inReplyTo ? threadId : undefined,
-      inReplyTo,
+      threadId: threadId || undefined,
+      inReplyTo: inReplyTo || undefined,
     });
 
     // Auto-update project_creator on first outbound email

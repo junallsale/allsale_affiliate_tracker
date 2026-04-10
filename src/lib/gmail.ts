@@ -105,7 +105,7 @@ export interface EmailAttachment {
   data: Buffer;
 }
 
-/** Encode email to RFC 2822 base64url format */
+/** Encode email to RFC 2822 base64url format. Returns raw + generated Message-ID. */
 function encodeEmail(params: {
   from: string;
   to: string;
@@ -115,15 +115,20 @@ function encodeEmail(params: {
   inReplyTo?: string;
   references?: string;
   attachments?: EmailAttachment[];
-}): string {
+}): { raw: string; messageIdHeader: string } {
   const boundary = `boundary_${Date.now()}`;
   const hasAttachments = params.attachments && params.attachments.length > 0;
+
+  // Generate RFC 2822 Message-ID using sender's domain (Gmail preserves this header).
+  const senderDomain = params.from.match(/@([^>\s]+)/)?.[1] || 'allsale-affiliate-tracker.vercel.app';
+  const messageIdHeader = `<${crypto.randomUUID()}@${senderDomain}>`;
 
   const headers = [
     `From: ${params.from}`,
     `To: ${params.to}`,
     ...(params.cc ? [`Cc: ${params.cc}`] : []),
     `Subject: ${params.subject}`,
+    `Message-ID: ${messageIdHeader}`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/${hasAttachments ? 'mixed' : 'alternative'}; boundary="${boundary}"`,
     ...(params.inReplyTo ? [`In-Reply-To: ${params.inReplyTo}`, `References: ${params.references || params.inReplyTo}`] : []),
@@ -152,7 +157,7 @@ function encodeEmail(params: {
   parts.push(`--${boundary}--`);
 
   const raw = `${headers}\r\n\r\n${parts.join('\r\n')}`;
-  return Buffer.from(raw).toString('base64url');
+  return { raw: Buffer.from(raw).toString('base64url'), messageIdHeader };
 }
 
 /** Send an email via Gmail API */
@@ -166,9 +171,9 @@ export async function sendGmailEmail(params: {
   threadId?: string;
   inReplyTo?: string;
   attachments?: EmailAttachment[];
-}): Promise<{ messageId: string; threadId: string }> {
+}): Promise<{ messageId: string; threadId: string; messageIdHeader: string }> {
   const accessToken = await getAccessToken(params.refreshToken);
-  const raw = encodeEmail(params);
+  const { raw, messageIdHeader } = encodeEmail(params);
 
   const body: Record<string, string> = { raw };
   if (params.threadId) body.threadId = params.threadId;
@@ -188,7 +193,7 @@ export async function sendGmailEmail(params: {
   }
 
   const data = await res.json();
-  return { messageId: data.id, threadId: data.threadId };
+  return { messageId: data.id, threadId: data.threadId, messageIdHeader };
 }
 
 /** List new emails received after a given date */
