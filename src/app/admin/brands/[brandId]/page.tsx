@@ -15,6 +15,7 @@ import {
   Trash2,
   MoreVertical,
   ExternalLink,
+  Layers,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
@@ -82,6 +84,8 @@ export default function BrandDetailPage() {
     thumbnail_url: '',
     content_guide_url: '',
     product_link: '',
+    is_bundle: false,
+    component_ids: [] as string[],
   });
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -91,7 +95,12 @@ export default function BrandDetailPage() {
     thumbnail_url: '',
     content_guide_url: '',
     product_link: '',
+    is_bundle: false,
+    component_ids: [] as string[],
   });
+
+  // Map of bundle_product_id → component product ids (for cards + edit prefill)
+  const [bundleComponents, setBundleComponents] = useState<Record<string, string[]>>({});
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -154,6 +163,26 @@ export default function BrandDetailPage() {
 
         if (productsError) throw productsError;
         setProducts(productsData || []);
+
+        // Fetch bundle → component mappings for this brand's bundles
+        const bundleIds = (productsData || []).filter((p: any) => p.is_bundle).map((p: any) => p.id);
+        if (bundleIds.length) {
+          const { data: pbcData } = await supabase
+            .from('product_bundle_components')
+            .select('bundle_product_id, component_product_id, position')
+            .in('bundle_product_id', bundleIds)
+            .order('position', { ascending: true });
+          const map: Record<string, string[]> = {};
+          for (const row of pbcData || []) {
+            const bid = (row as any).bundle_product_id as string;
+            const cid = (row as any).component_product_id as string;
+            if (!map[bid]) map[bid] = [];
+            map[bid].push(cid);
+          }
+          setBundleComponents(map);
+        } else {
+          setBundleComponents({});
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -242,15 +271,33 @@ export default function BrandDetailPage() {
     try {
       setSubmitting(true);
 
-      const { error } = await supabase.from('products').insert({
-        brand_id: brand.id,
-        name: productFormData.name,
-        thumbnail_url: productFormData.thumbnail_url || null,
-        content_guide_url: productFormData.content_guide_url || null,
-        product_link: productFormData.product_link || null,
-      });
+      const { data: created, error } = await supabase
+        .from('products')
+        .insert({
+          brand_id: brand.id,
+          name: productFormData.name,
+          thumbnail_url: productFormData.thumbnail_url || null,
+          content_guide_url: productFormData.content_guide_url || null,
+          product_link: productFormData.product_link || null,
+          is_bundle: productFormData.is_bundle,
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      // If bundle, insert component links
+      if (productFormData.is_bundle && productFormData.component_ids.length && created) {
+        const rows = productFormData.component_ids.map((cid, idx) => ({
+          bundle_product_id: created.id,
+          component_product_id: cid,
+          position: idx,
+        }));
+        const { error: compErr } = await supabase
+          .from('product_bundle_components')
+          .insert(rows);
+        if (compErr) throw compErr;
+      }
 
       await refreshProducts();
 
@@ -259,6 +306,8 @@ export default function BrandDetailPage() {
         thumbnail_url: '',
         content_guide_url: '',
         product_link: '',
+        is_bundle: false,
+        component_ids: [],
       });
       setProductDialogOpen(false);
     } catch (error) {
@@ -275,6 +324,26 @@ export default function BrandDetailPage() {
       .select('*')
       .eq('brand_id', brand.id);
     if (data) setProducts(data);
+
+    // Refresh bundle → component map
+    const bundleIds = (data || []).filter((p: any) => p.is_bundle).map((p: any) => p.id);
+    if (bundleIds.length) {
+      const { data: pbcData } = await supabase
+        .from('product_bundle_components')
+        .select('bundle_product_id, component_product_id, position')
+        .in('bundle_product_id', bundleIds)
+        .order('position', { ascending: true });
+      const map: Record<string, string[]> = {};
+      for (const row of pbcData || []) {
+        const bid = (row as any).bundle_product_id as string;
+        const cid = (row as any).component_product_id as string;
+        if (!map[bid]) map[bid] = [];
+        map[bid].push(cid);
+      }
+      setBundleComponents(map);
+    } else {
+      setBundleComponents({});
+    }
   };
 
   const handleEditProduct = (product: Product) => {
@@ -284,6 +353,8 @@ export default function BrandDetailPage() {
       thumbnail_url: product.thumbnail_url || '',
       content_guide_url: product.content_guide_url || '',
       product_link: product.product_link || '',
+      is_bundle: !!product.is_bundle,
+      component_ids: bundleComponents[product.id] || [],
     });
     setEditProductDialogOpen(true);
   };
@@ -300,10 +371,45 @@ export default function BrandDetailPage() {
           thumbnail_url: editProductFormData.thumbnail_url || null,
           content_guide_url: editProductFormData.content_guide_url || null,
           product_link: editProductFormData.product_link || null,
+          is_bundle: editProductFormData.is_bundle,
         })
         .eq('id', editingProduct.id);
 
       if (error) throw error;
+
+      // Sync bundle components: delete previous, insert current (simple replace strategy)
+      const prevIds = bundleComponents[editingProduct.id] || [];
+      const nextIds = editProductFormData.is_bundle ? editProductFormData.component_ids : [];
+
+      const removed = prevIds.filter((id) => !nextIds.includes(id));
+      const added = nextIds.filter((id) => !prevIds.includes(id));
+
+      if (removed.length) {
+        const { error: delErr } = await supabase
+          .from('product_bundle_components')
+          .delete()
+          .eq('bundle_product_id', editingProduct.id)
+          .in('component_product_id', removed);
+        if (delErr) throw delErr;
+      }
+      if (added.length) {
+        const rows = added.map((cid, idx) => ({
+          bundle_product_id: editingProduct.id,
+          component_product_id: cid,
+          position: prevIds.length + idx,
+        }));
+        const { error: addErr } = await supabase
+          .from('product_bundle_components')
+          .insert(rows);
+        if (addErr) throw addErr;
+      }
+      // If turned OFF is_bundle, also clear any remaining components
+      if (!editProductFormData.is_bundle && prevIds.length && !removed.length) {
+        await supabase
+          .from('product_bundle_components')
+          .delete()
+          .eq('bundle_product_id', editingProduct.id);
+      }
 
       await refreshProducts();
       setEditProductDialogOpen(false);
@@ -558,6 +664,17 @@ export default function BrandDetailPage() {
                       <h3 className="font-semibold line-clamp-2">
                         {product.name}
                       </h3>
+                      {product.is_bundle && (
+                        <Badge variant="secondary" className="mt-1 gap-1">
+                          <Layers className="w-3 h-3" />
+                          Bundle
+                          {(bundleComponents[product.id]?.length ?? 0) > 0 && (
+                            <span className="ml-1 opacity-75">
+                              · {bundleComponents[product.id].length} items
+                            </span>
+                          )}
+                        </Badge>
+                      )}
                       {product.content_guide_url && (
                         <a
                           href={product.content_guide_url}
@@ -801,6 +918,61 @@ export default function BrandDetailPage() {
                 }
               />
             </div>
+
+            <div className="space-y-2 border-t pt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="edit-product-is-bundle"
+                  checked={editProductFormData.is_bundle}
+                  onCheckedChange={(checked) =>
+                    setEditProductFormData({
+                      ...editProductFormData,
+                      is_bundle: checked === true,
+                      component_ids: checked === true ? editProductFormData.component_ids : [],
+                    })
+                  }
+                />
+                <Label htmlFor="edit-product-is-bundle" className="cursor-pointer">
+                  This is a bundle
+                </Label>
+              </div>
+              {editProductFormData.is_bundle && (
+                <div className="space-y-2 pl-6">
+                  <Label className="text-xs text-muted-foreground">
+                    Component products (same brand, non-bundle)
+                  </Label>
+                  <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
+                    {products
+                      .filter((p) => !p.is_bundle && p.id !== editingProduct?.id)
+                      .map((p) => {
+                        const checked = editProductFormData.component_ids.includes(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => {
+                                const next = v === true
+                                  ? [...editProductFormData.component_ids, p.id]
+                                  : editProductFormData.component_ids.filter((id) => id !== p.id);
+                                setEditProductFormData({ ...editProductFormData, component_ids: next });
+                              }}
+                            />
+                            <span className="truncate">{p.name}</span>
+                          </label>
+                        );
+                      })}
+                    {products.filter((p) => !p.is_bundle && p.id !== editingProduct?.id).length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">
+                        No eligible products in this brand
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
@@ -888,6 +1060,61 @@ export default function BrandDetailPage() {
                   })
                 }
               />
+            </div>
+
+            <div className="space-y-2 border-t pt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="product-is-bundle"
+                  checked={productFormData.is_bundle}
+                  onCheckedChange={(checked) =>
+                    setProductFormData({
+                      ...productFormData,
+                      is_bundle: checked === true,
+                      component_ids: checked === true ? productFormData.component_ids : [],
+                    })
+                  }
+                />
+                <Label htmlFor="product-is-bundle" className="cursor-pointer">
+                  This is a bundle
+                </Label>
+              </div>
+              {productFormData.is_bundle && (
+                <div className="space-y-2 pl-6">
+                  <Label className="text-xs text-muted-foreground">
+                    Component products (same brand, non-bundle)
+                  </Label>
+                  <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
+                    {products
+                      .filter((p) => !p.is_bundle)
+                      .map((p) => {
+                        const checked = productFormData.component_ids.includes(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => {
+                                const next = v === true
+                                  ? [...productFormData.component_ids, p.id]
+                                  : productFormData.component_ids.filter((id) => id !== p.id);
+                                setProductFormData({ ...productFormData, component_ids: next });
+                              }}
+                            />
+                            <span className="truncate">{p.name}</span>
+                          </label>
+                        );
+                      })}
+                    {products.filter((p) => !p.is_bundle).length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">
+                        No eligible products in this brand
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

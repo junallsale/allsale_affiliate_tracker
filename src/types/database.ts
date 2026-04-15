@@ -110,8 +110,20 @@ export interface Product {
   thumbnail_url?: string;
   content_guide_url?: string;
   product_link?: string;
+  sample_invitation_url?: string;
+  sample_invitation_label?: string;
+  is_bundle: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProductBundleComponent {
+  id: string;
+  bundle_product_id: string;
+  component_product_id: string;
+  position: number;
+  created_at: string;
+  component?: Product;
 }
 
 export interface ProjectCreatorRemind {

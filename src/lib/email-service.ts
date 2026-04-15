@@ -4,6 +4,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendGmailEmail } from './gmail';
 import { renderTemplate } from './email-templates';
+import { buildProductBriefItems, renderContentGuideSectionLi } from './product-briefs';
 
 function getServiceClient() {
   return createClient(
@@ -111,7 +112,7 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
       id, unique_slug, contract_amount, commission_rate, assigned_video_count, advance_payment,
       creator:creators(name, email, tiktok_handle),
       project:projects(id, name, require_shipping_address, submission_deadline, welcome_email_subject, welcome_email_body, brand:brands(name)),
-      project_creator_products:project_creator_products(product:products(name, content_guide_url, sample_invitation_url, sample_invitation_label))
+      project_creator_products:project_creator_products(product:products(id, name, content_guide_url, sample_invitation_url, sample_invitation_label, is_bundle))
     `)
     .eq('id', params.projectCreatorId)
     .single();
@@ -156,10 +157,9 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
     ? getProductSampleLinksHtml(products)
     : { sampleLinkSection: '', sampleLinksSection: '' };
 
-  // Content guide section
-  const contentGuideSection = contentGuideUrl
-    ? `<li><strong>Product brief:</strong> <a href="${contentGuideUrl}">Content Guide</a></li>`
-    : '';
+  // Content guide section — expands bundle products into component briefs
+  const briefItems = await buildProductBriefItems(products, supabase);
+  const contentGuideSection = renderContentGuideSectionLi(briefItems);
 
   // Advance payment section
   const advancePayment = (pc as any).advance_payment || 0;
