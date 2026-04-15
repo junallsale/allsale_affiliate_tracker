@@ -78,12 +78,11 @@ export async function POST(req: NextRequest) {
           .single();
 
         const senderEmail: string | undefined = senderAccount?.email;
-        // Strip internal thread ref marker like " [#A1B2C3D4]" from subject.
-        const cleanSubject = (subject as string)
-          .replace(/\s*\[#[A-Z0-9]{8}\]\s*$/i, '')
-          .trim();
+        // Keep the full subject including the thread-ref marker [#XXXXXXXX];
+        // operators rely on it to trace which thread a contact_point belongs to.
+        const fullSubject = (subject as string).trim();
         const contactPoint = senderEmail
-          ? (cleanSubject ? `${senderEmail} / ${cleanSubject}` : senderEmail)
+          ? (fullSubject ? `${senderEmail} / ${fullSubject}` : senderEmail)
           : null;
         const gmailLink = senderEmail
           ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(senderEmail)}#inbox/${result.threadId}`
