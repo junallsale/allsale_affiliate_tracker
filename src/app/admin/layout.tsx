@@ -41,12 +41,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const fetchChecklistBadge = useCallback(async () => {
     const supabase = createSupabaseBrowser();
-    // Needs Review count
-    const { count: reviewCount } = await supabase
+    // Needs Review: count unique project_creators with active reviews
+    const { data: reviewRows } = await supabase
       .from('project_creator_reviews')
-      .select('id', { count: 'exact', head: true })
+      .select('project_creator_id')
       .in('status', ['need_review', 'in_progress']);
-    // Posting complete but not confirmed
+    const reviewCount = new Set((reviewRows || []).map((r: any) => r.project_creator_id)).size;
+    // Posting Complete: signed + all videos submitted + not confirmed
     const { data: pcRows } = await supabase
       .from('project_creators')
       .select('id, assigned_video_count, videos(id)')
@@ -56,7 +57,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const postingCount = (pcRows || []).filter(
       (r: any) => ((r.videos as any[]) || []).length >= ((r as any).assigned_video_count || 1)
     ).length;
-    setChecklistBadgeCount((reviewCount || 0) + postingCount);
+    setChecklistBadgeCount(reviewCount + postingCount);
   }, []);
 
   const fetchNotifications = useCallback(async () => {
