@@ -68,6 +68,7 @@ interface PCFullData {
   ach_bank_name: string | null;
   ach_account_number: string | null;
   ach_beneficiary_address: string | null;
+  ach_routing_number: string | null;
   status: string;
   created_at: string;
   creators: Creator;
@@ -135,7 +136,7 @@ export default function CreatorDetailPage() {
   const [editingContact, setEditingContact] = useState(false);
   const [contactForm, setContactForm] = useState({
     contact_point: '', communication_link: '', payment_email: '',
-    payment_method: 'paypal', ach_account_name: '', ach_bank_name: '', ach_account_number: '', ach_beneficiary_address: '',
+    payment_method: 'paypal', ach_account_name: '', ach_bank_name: '', ach_account_number: '', ach_routing_number: '', ach_beneficiary_address: '',
   });
   const [savingContact, setSavingContact] = useState(false);
 
@@ -492,6 +493,7 @@ export default function CreatorDetailPage() {
       ach_bank_name: pcData?.ach_bank_name || '',
       ach_account_number: pcData?.ach_account_number || '',
       ach_beneficiary_address: pcData?.ach_beneficiary_address || '',
+      ach_routing_number: pcData?.ach_routing_number || '',
     });
     setEditingContact(true);
   };
@@ -510,6 +512,7 @@ export default function CreatorDetailPage() {
           ach_account_name: isAch ? (contactForm.ach_account_name.trim() || null) : null,
           ach_bank_name: isAch ? (contactForm.ach_bank_name.trim() || null) : null,
           ach_account_number: isAch ? (contactForm.ach_account_number.trim() || null) : null,
+          ach_routing_number: isAch ? (contactForm.ach_routing_number.trim() || null) : null,
           ach_beneficiary_address: isAch ? (contactForm.ach_beneficiary_address.trim() || null) : null,
         })
         .eq('id', pcId);
@@ -995,6 +998,15 @@ export default function CreatorDetailPage() {
                           disabled={savingContact}
                         />
                       </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Routing Number</Label>
+                        <Input
+                          placeholder="Routing number"
+                          value={contactForm.ach_routing_number}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, ach_routing_number: e.target.value }))}
+                          disabled={savingContact}
+                        />
+                      </div>
                       <div className="col-span-2 space-y-1">
                         <Label className="text-xs">Beneficiary Address</Label>
                         <Input
@@ -1049,6 +1061,10 @@ export default function CreatorDetailPage() {
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Account Number</p>
                       <p className="text-sm font-mono">{pcData.ach_account_number || <span className="text-muted-foreground">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Routing Number</p>
+                      <p className="text-sm font-mono">{pcData.ach_routing_number || <span className="text-muted-foreground">Not set</span>}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Beneficiary Address</p>

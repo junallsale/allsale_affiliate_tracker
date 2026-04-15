@@ -208,6 +208,7 @@ export default function CreatorPublicPage() {
   const [achBankName, setAchBankName] = useState('');
   const [achAccountNumber, setAchAccountNumber] = useState('');
   const [achBeneficiaryAddress, setAchBeneficiaryAddress] = useState('');
+  const [achRoutingNumber, setAchRoutingNumber] = useState('');
   const [contractEmail, setContractEmail] = useState('');
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [signSubmitting, setSignSubmitting] = useState(false);
@@ -336,6 +337,7 @@ export default function CreatorPublicPage() {
         formData.append('ach_account_name', achAccountName.trim());
         formData.append('ach_bank_name', achBankName.trim());
         formData.append('ach_account_number', achAccountNumber.trim());
+        formData.append('ach_routing_number', achRoutingNumber.trim());
         formData.append('ach_beneficiary_address', achBeneficiaryAddress.trim());
       } else {
         formData.append('payment_email', emailToUse);
@@ -374,7 +376,7 @@ export default function CreatorPublicPage() {
     } finally {
       setSignSubmitting(false);
     }
-  }, [legalName, paymentEmail, signatureDataUrl, pcData, shippingName, shippingAddress, shippingPhone, achAccountName, achBankName, achAccountNumber, achBeneficiaryAddress]);
+  }, [legalName, paymentEmail, signatureDataUrl, pcData, shippingName, shippingAddress, shippingPhone, achAccountName, achBankName, achAccountNumber, achRoutingNumber, achBeneficiaryAddress]);
 
   // Handle video submission
   const handleSubmitVideo = async (e: React.FormEvent) => {
@@ -624,6 +626,11 @@ export default function CreatorPublicPage() {
                         placeholder="Account Number"
                         value={achAccountNumber}
                         onChange={(e) => setAchAccountNumber(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Routing Number"
+                        value={achRoutingNumber}
+                        onChange={(e) => setAchRoutingNumber(e.target.value)}
                       />
                       <Input
                         placeholder="Beneficiary Address (full address)"

@@ -29,6 +29,7 @@ export interface ContractData {
   achBankName?: string;
   achAccountNumber?: string;
   achBeneficiaryAddress?: string;
+  achRoutingNumber?: string;
 }
 
 /** Generate SHA-256 hash of contract data for integrity verification */
@@ -121,6 +122,7 @@ export async function generateContractPdf(data: ContractData, contractHash: stri
     if (data.achAccountName) addLine(`Account Name: ${data.achAccountName}`);
     if (data.achBankName) addLine(`Bank: ${data.achBankName}`);
     if (data.achAccountNumber) addLine(`Account Number: ${data.achAccountNumber}`);
+    if (data.achRoutingNumber) addLine(`Routing Number: ${data.achRoutingNumber}`);
     if (data.achBeneficiaryAddress) addLine(`Beneficiary Address: ${data.achBeneficiaryAddress}`);
   } else {
     addLine(`Payment Method: PayPal (${data.paymentEmail})`);

@@ -41,6 +41,7 @@ interface PaymentCreatorRow {
   ach_bank_name: string | null;
   ach_account_number: string | null;
   ach_beneficiary_address: string | null;
+  ach_routing_number: string | null;
   signed_at: string | null;
   legal_name: string | null;
   creators: {
@@ -106,7 +107,7 @@ export default function PaymentsPage() {
           id, project_id, creator_id,
           advance_payment, remaining_payment, contract_amount,
           assigned_video_count, content_type, payment_email,
-          payment_method, ach_account_name, ach_bank_name, ach_account_number, ach_beneficiary_address,
+          payment_method, ach_account_name, ach_bank_name, ach_account_number, ach_routing_number, ach_beneficiary_address,
           signed_at, legal_name,
           creators(id, name, tiktok_handle, email),
           projects(id, name, brand_id, brands(id, name, slug)),
@@ -557,6 +558,10 @@ export default function PaymentsPage() {
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Account #</span>
                         <span className="font-medium font-mono">{paymentTarget.ach_account_number || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Routing #</span>
+                        <span className="font-medium font-mono">{paymentTarget.ach_routing_number || 'N/A'}</span>
                       </div>
                       {paymentTarget.ach_beneficiary_address && (
                         <div className="flex justify-between">

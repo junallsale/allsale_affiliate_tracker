@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     const achBankName = formData.get("ach_bank_name") as string | null;
     const achAccountNumber = formData.get("ach_account_number") as string | null;
     const achBeneficiaryAddress = formData.get("ach_beneficiary_address") as string | null;
+    const achRoutingNumber = formData.get("ach_routing_number") as string | null;
 
     const isAch = paymentMethod === 'ach';
     if (!projectCreatorId || !legalName?.trim() || !file) {
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
       updateData.ach_account_name = achAccountName?.trim() || null;
       updateData.ach_bank_name = achBankName?.trim() || null;
       updateData.ach_account_number = achAccountNumber?.trim() || null;
+      updateData.ach_routing_number = achRoutingNumber?.trim() || null;
       updateData.ach_beneficiary_address = achBeneficiaryAddress?.trim() || null;
       updateData.payment_email = null;
     } else {
@@ -82,6 +84,7 @@ export async function POST(request: NextRequest) {
       updateData.ach_account_name = null;
       updateData.ach_bank_name = null;
       updateData.ach_account_number = null;
+      updateData.ach_routing_number = null;
       updateData.ach_beneficiary_address = null;
     }
     if (shippingName) updateData.shipping_name = shippingName.trim();
@@ -112,6 +115,7 @@ export async function POST(request: NextRequest) {
         achBankName: achBankName?.trim(),
         achAccountNumber: achAccountNumber?.trim(),
         achBeneficiaryAddress: achBeneficiaryAddress?.trim(),
+        achRoutingNumber: achRoutingNumber?.trim(),
       });
     } catch (err) {
       console.error("Contract PDF/email error:", err);
@@ -141,6 +145,7 @@ async function generateAndSendContract(
     achBankName?: string;
     achAccountNumber?: string;
     achBeneficiaryAddress?: string;
+    achRoutingNumber?: string;
   }
 ) {
   // Fetch full project_creator data
@@ -189,6 +194,7 @@ async function generateAndSendContract(
     achBankName: params.achBankName,
     achAccountNumber: params.achAccountNumber,
     achBeneficiaryAddress: params.achBeneficiaryAddress,
+    achRoutingNumber: params.achRoutingNumber,
   };
 
   // Generate hash
