@@ -36,6 +36,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [notifOpen, setNotifOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
+  // Checklist badge
+  const [checklistBadgeCount, setChecklistBadgeCount] = useState(0);
+
+  const fetchChecklistBadge = useCallback(async () => {
+    const supabase = createSupabaseBrowser();
+    // Needs Review count
+    const { count: reviewCount } = await supabase
+      .from('project_creator_reviews')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['need_review', 'in_progress']);
+    // Posting complete but not confirmed
+    const { data: pcRows } = await supabase
+      .from('project_creators')
+      .select('id, assigned_video_count, videos(id)')
+      .not('signed_at', 'is', null)
+      .eq('posting_confirmed', false)
+      .or('is_deleted.is.null,is_deleted.eq.false');
+    const postingCount = (pcRows || []).filter(
+      (r: any) => ((r.videos as any[]) || []).length >= ((r as any).assigned_video_count || 1)
+    ).length;
+    setChecklistBadgeCount((reviewCount || 0) + postingCount);
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
     const supabase = createSupabaseBrowser();
     const { data: { session } } = await supabase.auth.getSession();
@@ -80,6 +103,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setIsAuthenticated(true);
         setUserEmail(session.user.email || '');
         fetchNotifications();
+        fetchChecklistBadge();
       } else if (!isLoginPage) {
         router.replace('/admin/login');
         return;
@@ -261,6 +285,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {navLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname.startsWith(link.href);
+            const badgeCount = link.href === '/admin/checklist' ? checklistBadgeCount : 0;
             return (
               <Link
                 key={link.href}
@@ -274,6 +299,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 <Icon className="h-4 w-4" />
                 {link.label}
+                {badgeCount > 0 && (
+                  <span className="ml-auto min-w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold px-1">
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </span>
+                )}
               </Link>
             );
           })}

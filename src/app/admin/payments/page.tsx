@@ -42,6 +42,7 @@ interface PaymentCreatorRow {
   ach_account_number: string | null;
   ach_beneficiary_address: string | null;
   ach_routing_number: string | null;
+  posting_confirmed: boolean;
   signed_at: string | null;
   legal_name: string | null;
   creators: {
@@ -108,7 +109,7 @@ export default function PaymentsPage() {
           advance_payment, remaining_payment, contract_amount,
           assigned_video_count, content_type, payment_email,
           payment_method, ach_account_name, ach_bank_name, ach_account_number, ach_routing_number, ach_beneficiary_address,
-          signed_at, legal_name,
+          posting_confirmed, signed_at, legal_name,
           creators(id, name, tiktok_handle, email),
           projects(id, name, brand_id, brands(id, name, slug)),
           payments(id, amount, payment_date),
@@ -136,7 +137,7 @@ export default function PaymentsPage() {
       allRows.forEach((row) => {
         if (row.remaining_payment > 0) {
           const videoCount = (row.videos || []).length;
-          if (videoCount >= row.assigned_video_count) {
+          if (videoCount >= row.assigned_video_count && row.posting_confirmed) {
             const totalPaid = (row.payments || []).reduce((sum, p) => sum + p.amount, 0);
             if (totalPaid < row.contract_amount) {
               combined.push({ ...row, _paymentType: 'remaining' });

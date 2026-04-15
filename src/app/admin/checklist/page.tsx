@@ -59,9 +59,10 @@ interface ChecklistRow {
   project_creator_reviews: { id: string; review_date: string; note: string | null; status: string; author_name: string | null; resolve_note: string | null; created_at: string }[];
   payments: { id: string; amount: number }[];
   videos: { id: string }[];
+  posting_confirmed: boolean;
 }
 
-type TabType = 'contract' | 'signature' | 'sample' | 'video' | 'review';
+type TabType = 'contract' | 'signature' | 'sample' | 'video' | 'review' | 'posting';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 function getDaysElapsed(dateStr: string | null): number | null {
@@ -111,7 +112,7 @@ export default function ChecklistPage() {
       .select(`
         id, project_id, creator_id, contract_sent, contract_sent_at,
         signed_at, sample_shipped, communication_link, contact_point,
-        assigned_video_count, advance_payment, created_at,
+        assigned_video_count, advance_payment, created_at, posting_confirmed,
         creators(id, name, tiktok_handle, email),
         projects(id, name, brand_id, brands(id, name, slug)),
         project_creator_memos(id),
@@ -163,6 +164,15 @@ export default function ChecklistPage() {
     ),
     [allRows],
   );
+  const postingComplete = useMemo(
+    () => allRows.filter(r => {
+      if (r.posting_confirmed) return false;
+      if (!r.signed_at) return false;
+      const videoCount = (r.videos || []).length;
+      return videoCount >= (r.assigned_video_count || 1);
+    }),
+    [allRows],
+  );
 
   const currentRows = activeTab === 'contract'
     ? contractNotSent
@@ -174,7 +184,9 @@ export default function ChecklistPage() {
           ? awaitingVideo
           : activeTab === 'review'
             ? needsReview
-            : sampleNotShipped;
+            : activeTab === 'posting'
+              ? postingComplete
+              : sampleNotShipped;
 
   // ── Toggle handlers ──
   const handleToggleContractSent = async (pcId: string, value: boolean) => {
@@ -204,6 +216,21 @@ export default function ChecklistPage() {
       ));
     } catch (err) {
       console.error('Error toggling sample shipped:', err);
+    }
+  };
+
+  const handleConfirmPosting = async (pcId: string) => {
+    try {
+      const { error } = await supabase
+        .from('project_creators')
+        .update({ posting_confirmed: true })
+        .eq('id', pcId);
+      if (error) throw error;
+      setAllRows(prev => prev.map(r =>
+        r.id === pcId ? { ...r, posting_confirmed: true } : r
+      ));
+    } catch (err) {
+      console.error('Error confirming posting:', err);
     }
   };
 
@@ -403,7 +430,7 @@ export default function ChecklistPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-3">
@@ -469,6 +496,19 @@ export default function ChecklistPage() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <Check className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{postingComplete.length}</p>
+                <p className="text-xs text-muted-foreground">Posting Complete</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tabs */}
@@ -488,6 +528,9 @@ export default function ChecklistPage() {
           </TabsTrigger>
           <TabsTrigger value="review" className="text-xs">
             Needs Review ({needsReview.length})
+          </TabsTrigger>
+          <TabsTrigger value="posting" className="text-xs">
+            Posting Complete ({postingComplete.length})
           </TabsTrigger>
         </TabsList>
 
@@ -511,6 +554,9 @@ export default function ChecklistPage() {
                       <TableHead className="text-center w-[50px]">
                         {activeTab === 'contract' ? 'Contract' : 'Sample'}
                       </TableHead>
+                    )}
+                    {activeTab === 'posting' && (
+                      <TableHead className="text-center w-[80px]">Confirm</TableHead>
                     )}
                     <TableHead className="w-[180px]">Brand / Project</TableHead>
                     <TableHead>Creator</TableHead>
@@ -581,6 +627,22 @@ export default function ChecklistPage() {
                             >
                               {row.sample_shipped && <Check className="w-3 h-3 text-white" />}
                             </button>
+                          </TableCell>
+                        )}
+                        {activeTab === 'posting' && (
+                          <TableCell className="text-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleConfirmPosting(row.id);
+                              }}
+                            >
+                              <Check className="w-3 h-3 mr-1" />
+                              Confirm
+                            </Button>
                           </TableCell>
                         )}
 
