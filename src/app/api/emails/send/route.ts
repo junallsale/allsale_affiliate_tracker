@@ -59,6 +59,15 @@ export async function POST(req: NextRequest) {
     //       false → never touch (operator explicitly opted out).
     //       undefined (legacy callers e.g. cron) → fall back to "first-send only"
     //         behavior so cron doesn't silently clobber curated values.
+    //
+    // NOTE: project_creators has a BEFORE UPDATE trigger that reverts most
+    // fields for JWT role != 'authenticated' | 'service_role'. If
+    // SUPABASE_SERVICE_ROLE_KEY is missing from env, this writer falls back
+    // to anon and writes get silently reverted. The one-time startup log
+    // below makes that misconfiguration visible in Vercel logs.
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[emails/send] SUPABASE_SERVICE_ROLE_KEY missing — project_creator writes will be reverted by RLS trigger');
+    }
     if (projectCreatorId) {
       try {
         const db = getServiceClient();
