@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
@@ -122,6 +123,10 @@ export default function ProjectDetailPage() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  // Controls whether this send refreshes project_creator.contact_point /
+  // communication_link. Defaults to ON for first sends, OFF once contract
+  // has been sent (to preserve manually curated values).
+  const [updateContactInfo, setUpdateContactInfo] = useState(true);
 
   // Sample invitation links
   const [sampleLinks, setSampleLinks] = useState<{ id: string; url: string; label: string | null; total_quantity: number | null; used_count: number; expires_at: string | null; is_active: boolean }[]>([]);
@@ -214,6 +219,9 @@ export default function ProjectDetailPage() {
     setEmailLoading(true);
     setEmailSent(false);
     setEmailCc('');
+    // Default ON for first-ever send, OFF afterwards so previously curated
+    // contact_point / communication_link values aren't silently overwritten.
+    setUpdateContactInfo(!pc.contract_sent);
     try {
       const res = await fetch('/api/emails/compose', {
         method: 'POST',
@@ -244,6 +252,7 @@ export default function ProjectDetailPage() {
           subject: emailSubject,
           bodyHtml: emailBody,
           projectCreatorId: emailTarget.id,
+          updateContactInfo,
         }),
       });
       if (res.ok) setEmailSent(true);
@@ -2145,6 +2154,25 @@ export default function ProjectDetailPage() {
                       <Suspense fallback={<div className="h-[200px] border rounded-md flex items-center justify-center text-muted-foreground text-sm">Loading editor...</div>}>
                         <RichTextEditor value={emailBody} onChange={setEmailBody} placeholder="Write your email..." />
                       </Suspense>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 rounded-md border p-3 bg-muted/30">
+                    <Checkbox
+                      id="update-contact-info"
+                      checked={updateContactInfo}
+                      onCheckedChange={(v) => setUpdateContactInfo(v === true)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="update-contact-info" className="text-sm font-medium cursor-pointer">
+                        Update contact &amp; communication info
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Overwrite this creator&apos;s contact_point (sender / subject) and communication_link (Gmail thread URL) with values from this send.
+                        {emailTarget?.contract_sent && (
+                          <span className="text-amber-700"> Existing values will be replaced.</span>
+                        )}
+                      </p>
                     </div>
                   </div>
                 </div>
