@@ -255,7 +255,12 @@ export default function ProjectDetailPage() {
           updateContactInfo,
         }),
       });
-      if (res.ok) setEmailSent(true);
+      if (res.ok) {
+        setEmailSent(true);
+        // Re-fetch so the creator row reflects any server-side
+        // contact_point / communication_link / contract_sent updates.
+        fetchProjectData();
+      }
     } catch {}
     setEmailSending(false);
   };

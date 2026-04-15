@@ -104,11 +104,18 @@ export async function POST(req: NextRequest) {
             communication_link: gmailLink,
           };
           if (contactPoint) contactUpdates.contact_point = contactPoint;
-          const { error: refreshErr } = await db
+          const { data: refreshed, error: refreshErr } = await db
             .from('project_creators')
             .update(contactUpdates)
-            .eq('id', projectCreatorId);
-          if (refreshErr) console.error('project_creator contact refresh failed:', refreshErr);
+            .eq('id', projectCreatorId)
+            .select('id, contact_point, communication_link');
+          if (refreshErr) {
+            console.error('project_creator contact refresh failed:', refreshErr);
+          } else if (!refreshed?.length) {
+            console.error('project_creator contact refresh matched 0 rows for', projectCreatorId);
+          } else {
+            console.log('project_creator contact refresh applied:', refreshed[0]);
+          }
         }
       } catch (e) {
         console.error('project_creator update error:', e);
