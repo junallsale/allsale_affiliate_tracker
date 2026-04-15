@@ -38,25 +38,36 @@ export async function POST(req: NextRequest) {
       inReplyTo: inReplyTo || undefined,
     });
 
-    // Auto-update project_creator on first outbound email
+    // Auto-update project_creator on first outbound email.
+    // Stores "<sender> / <subject>" in contact_point and a Gmail thread URL
+    // (scoped to the sender account via authuser) in communication_link.
     if (projectCreatorId) {
       try {
         const db = getServiceClient();
-        // Get sender email for contact_point
         const { data: senderAccount } = await db
           .from('email_accounts')
           .select('email')
           .eq('id', emailAccountId)
           .single();
 
-        const gmailLink = `https://mail.google.com/mail/u/0/#inbox/${result.messageId}`;
+        const senderEmail: string | undefined = senderAccount?.email;
+        // Strip internal thread ref marker like " [#A1B2C3D4]" from subject.
+        const cleanSubject = (subject as string)
+          .replace(/\s*\[#[A-Z0-9]{8}\]\s*$/i, '')
+          .trim();
+        const contactPoint = senderEmail
+          ? (cleanSubject ? `${senderEmail} / ${cleanSubject}` : senderEmail)
+          : null;
+        const gmailLink = senderEmail
+          ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(senderEmail)}#inbox/${result.threadId}`
+          : `https://mail.google.com/mail/u/0/#inbox/${result.threadId}`;
+
         const updates: Record<string, unknown> = {
           contract_sent: true,
           contract_sent_at: new Date().toISOString(),
+          communication_link: gmailLink,
         };
-        // Set contact_point and communication_link on first email
-        if (senderAccount?.email) updates.contact_point = senderAccount.email;
-        updates.communication_link = gmailLink;
+        if (contactPoint) updates.contact_point = contactPoint;
 
         const { error: updateErr } = await db
           .from('project_creators')
