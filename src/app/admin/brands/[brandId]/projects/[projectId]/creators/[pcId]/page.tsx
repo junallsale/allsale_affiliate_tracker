@@ -63,6 +63,11 @@ interface PCFullData {
   shipping_address: string | null;
   shipping_phone: string | null;
   contract_notes: string | null;
+  payment_method: string;
+  ach_account_name: string | null;
+  ach_bank_name: string | null;
+  ach_account_number: string | null;
+  ach_beneficiary_address: string | null;
   status: string;
   created_at: string;
   creators: Creator;
@@ -128,7 +133,10 @@ export default function CreatorDetailPage() {
 
   // Contact info editing
   const [editingContact, setEditingContact] = useState(false);
-  const [contactForm, setContactForm] = useState({ contact_point: '', communication_link: '', payment_email: '' });
+  const [contactForm, setContactForm] = useState({
+    contact_point: '', communication_link: '', payment_email: '',
+    payment_method: 'paypal', ach_account_name: '', ach_bank_name: '', ach_account_number: '', ach_beneficiary_address: '',
+  });
   const [savingContact, setSavingContact] = useState(false);
 
   // Delete creator
@@ -479,6 +487,11 @@ export default function CreatorDetailPage() {
       contact_point: pcData?.contact_point || '',
       communication_link: pcData?.communication_link || '',
       payment_email: pcData?.payment_email || '',
+      payment_method: pcData?.payment_method || 'paypal',
+      ach_account_name: pcData?.ach_account_name || '',
+      ach_bank_name: pcData?.ach_bank_name || '',
+      ach_account_number: pcData?.ach_account_number || '',
+      ach_beneficiary_address: pcData?.ach_beneficiary_address || '',
     });
     setEditingContact(true);
   };
@@ -486,12 +499,18 @@ export default function CreatorDetailPage() {
   const handleSaveContact = async () => {
     try {
       setSavingContact(true);
+      const isAch = contactForm.payment_method === 'ach';
       const { error } = await supabase
         .from('project_creators')
         .update({
           contact_point: contactForm.contact_point.trim() || null,
           communication_link: contactForm.communication_link.trim() || null,
-          payment_email: contactForm.payment_email.trim() || null,
+          payment_method: contactForm.payment_method,
+          payment_email: isAch ? null : (contactForm.payment_email.trim() || null),
+          ach_account_name: isAch ? (contactForm.ach_account_name.trim() || null) : null,
+          ach_bank_name: isAch ? (contactForm.ach_bank_name.trim() || null) : null,
+          ach_account_number: isAch ? (contactForm.ach_account_number.trim() || null) : null,
+          ach_beneficiary_address: isAch ? (contactForm.ach_beneficiary_address.trim() || null) : null,
         })
         .eq('id', pcId);
 
@@ -923,15 +942,71 @@ export default function CreatorDetailPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Payment Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="payment@example.com"
-                    value={contactForm.payment_email}
-                    onChange={(e) => setContactForm(prev => ({ ...prev, payment_email: e.target.value }))}
+                  <Label className="text-xs">Payment Method</Label>
+                  <select
+                    className="flex h-9 w-full rounded-md border px-3 py-1 text-sm bg-background"
+                    value={contactForm.payment_method}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, payment_method: e.target.value }))}
                     disabled={savingContact}
-                  />
+                  >
+                    <option value="paypal">PayPal</option>
+                    <option value="ach">ACH (Bank Transfer)</option>
+                  </select>
                 </div>
+                {contactForm.payment_method === 'paypal' ? (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Payment Email (PayPal)</Label>
+                    <Input
+                      type="email"
+                      placeholder="payment@example.com"
+                      value={contactForm.payment_email}
+                      onChange={(e) => setContactForm(prev => ({ ...prev, payment_email: e.target.value }))}
+                      disabled={savingContact}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1 p-3 border rounded-md bg-muted/30">
+                    <p className="text-xs font-medium mb-2">ACH Bank Details</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Account Name</Label>
+                        <Input
+                          placeholder="John Doe"
+                          value={contactForm.ach_account_name}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, ach_account_name: e.target.value }))}
+                          disabled={savingContact}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Bank Name</Label>
+                        <Input
+                          placeholder="Chase, Bank of America..."
+                          value={contactForm.ach_bank_name}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, ach_bank_name: e.target.value }))}
+                          disabled={savingContact}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Account Number</Label>
+                        <Input
+                          placeholder="Account number"
+                          value={contactForm.ach_account_number}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, ach_account_number: e.target.value }))}
+                          disabled={savingContact}
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <Label className="text-xs">Beneficiary Address</Label>
+                        <Input
+                          placeholder="Full address"
+                          value={contactForm.ach_beneficiary_address}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, ach_beneficiary_address: e.target.value }))}
+                          disabled={savingContact}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-4">
@@ -956,9 +1031,36 @@ export default function CreatorDetailPage() {
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Payment Email</p>
-                  <p className="text-sm">{pcData.payment_email ? pcData.payment_email : <span className="text-muted-foreground">Not set</span>}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Payment Method</p>
+                  <Badge variant="outline" className="text-xs">
+                    {pcData.payment_method === 'ach' ? 'ACH (Bank Transfer)' : 'PayPal'}
+                  </Badge>
                 </div>
+                {pcData.payment_method === 'ach' ? (
+                  <div className="col-span-3 grid grid-cols-4 gap-4 pt-2 border-t">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Account Name</p>
+                      <p className="text-sm">{pcData.ach_account_name || <span className="text-muted-foreground">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Bank Name</p>
+                      <p className="text-sm">{pcData.ach_bank_name || <span className="text-muted-foreground">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Account Number</p>
+                      <p className="text-sm font-mono">{pcData.ach_account_number || <span className="text-muted-foreground">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Beneficiary Address</p>
+                      <p className="text-sm">{pcData.ach_beneficiary_address || <span className="text-muted-foreground">Not set</span>}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Payment Email</p>
+                    <p className="text-sm">{pcData.payment_email || <span className="text-muted-foreground">Not set</span>}</p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

@@ -20,9 +20,21 @@ export async function POST(request: NextRequest) {
     const paymentEmail = formData.get("payment_email") as string;
     const contractEmail = formData.get("contract_email") as string;
     const file = formData.get("signature") as File;
+    const paymentMethod = (formData.get("payment_method") as string) || 'paypal';
+    const achAccountName = formData.get("ach_account_name") as string | null;
+    const achBankName = formData.get("ach_bank_name") as string | null;
+    const achAccountNumber = formData.get("ach_account_number") as string | null;
+    const achBeneficiaryAddress = formData.get("ach_beneficiary_address") as string | null;
 
-    if (!projectCreatorId || !legalName?.trim() || !paymentEmail?.trim() || !file) {
+    const isAch = paymentMethod === 'ach';
+    if (!projectCreatorId || !legalName?.trim() || !file) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    if (!isAch && !paymentEmail?.trim()) {
+      return NextResponse.json({ error: "Payment email required for PayPal" }, { status: 400 });
+    }
+    if (isAch && (!achAccountName?.trim() || !achBankName?.trim() || !achAccountNumber?.trim())) {
+      return NextResponse.json({ error: "Bank details required for ACH" }, { status: 400 });
     }
 
     const supabase = getServiceClient();
@@ -54,11 +66,24 @@ export async function POST(request: NextRequest) {
     // Update project_creators record
     const updateData: Record<string, unknown> = {
       legal_name: legalName.trim(),
-      payment_email: paymentEmail.trim(),
+      payment_method: paymentMethod,
       contract_email: resolvedContractEmail,
       signature_url: signaturePublicUrl,
       signed_at: signedAt,
     };
+    if (isAch) {
+      updateData.ach_account_name = achAccountName?.trim() || null;
+      updateData.ach_bank_name = achBankName?.trim() || null;
+      updateData.ach_account_number = achAccountNumber?.trim() || null;
+      updateData.ach_beneficiary_address = achBeneficiaryAddress?.trim() || null;
+      updateData.payment_email = null;
+    } else {
+      updateData.payment_email = paymentEmail.trim();
+      updateData.ach_account_name = null;
+      updateData.ach_bank_name = null;
+      updateData.ach_account_number = null;
+      updateData.ach_beneficiary_address = null;
+    }
     if (shippingName) updateData.shipping_name = shippingName.trim();
     if (shippingAddress) updateData.shipping_address = shippingAddress.trim();
     if (shippingPhone) updateData.shipping_phone = shippingPhone.trim();
@@ -76,12 +101,17 @@ export async function POST(request: NextRequest) {
     try {
       await generateAndSendContract(supabase, projectCreatorId, {
         legalName: legalName.trim(),
-        paymentEmail: paymentEmail.trim(),
+        paymentEmail: isAch ? '' : paymentEmail.trim(),
         contractEmail: resolvedContractEmail,
         signatureUrl: signaturePublicUrl,
         signedAt,
         shippingName: shippingName?.trim(),
         shippingAddress: shippingAddress?.trim(),
+        paymentMethod: paymentMethod as 'paypal' | 'ach',
+        achAccountName: achAccountName?.trim(),
+        achBankName: achBankName?.trim(),
+        achAccountNumber: achAccountNumber?.trim(),
+        achBeneficiaryAddress: achBeneficiaryAddress?.trim(),
       });
     } catch (err) {
       console.error("Contract PDF/email error:", err);
@@ -106,6 +136,11 @@ async function generateAndSendContract(
     signedAt: string;
     shippingName?: string;
     shippingAddress?: string;
+    paymentMethod?: 'paypal' | 'ach';
+    achAccountName?: string;
+    achBankName?: string;
+    achAccountNumber?: string;
+    achBeneficiaryAddress?: string;
   }
 ) {
   // Fetch full project_creator data
@@ -149,6 +184,11 @@ async function generateAndSendContract(
     shippingName: params.shippingName,
     shippingAddress: params.shippingAddress,
     contractNotes: (pc as any).contract_notes || undefined,
+    paymentMethod: params.paymentMethod || 'paypal',
+    achAccountName: params.achAccountName,
+    achBankName: params.achBankName,
+    achAccountNumber: params.achAccountNumber,
+    achBeneficiaryAddress: params.achBeneficiaryAddress,
   };
 
   // Generate hash

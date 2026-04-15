@@ -36,6 +36,11 @@ interface PaymentCreatorRow {
   assigned_video_count: number;
   content_type: string;
   payment_email: string | null;
+  payment_method: string;
+  ach_account_name: string | null;
+  ach_bank_name: string | null;
+  ach_account_number: string | null;
+  ach_beneficiary_address: string | null;
   signed_at: string | null;
   legal_name: string | null;
   creators: {
@@ -101,6 +106,7 @@ export default function PaymentsPage() {
           id, project_id, creator_id,
           advance_payment, remaining_payment, contract_amount,
           assigned_video_count, content_type, payment_email,
+          payment_method, ach_account_name, ach_bank_name, ach_account_number, ach_beneficiary_address,
           signed_at, legal_name,
           creators(id, name, tiktok_handle, email),
           projects(id, name, brand_id, brands(id, name, slug)),
@@ -233,7 +239,7 @@ export default function PaymentsPage() {
 
   // Summary stats
   const totalCreators = allPaymentRows.length;
-  const readyCount = allPaymentRows.filter(r => !!r.payment_email).length;
+  const readyCount = allPaymentRows.filter(r => r.payment_method === 'ach' ? !!r.ach_account_name : !!r.payment_email).length;
   const totalOwed = allPaymentRows.reduce((sum, row) => {
     const totalPaid = (row.payments || []).reduce((s, p) => s + p.amount, 0);
     return sum + (row._paymentType === 'advance'
@@ -260,7 +266,7 @@ export default function PaymentsPage() {
             <TableHead>Brand / Project</TableHead>
             <TableHead>TikTok Handle</TableHead>
             <TableHead>Signed</TableHead>
-            <TableHead>Payment Email</TableHead>
+            <TableHead>Payment Info</TableHead>
             <TableHead className="text-center">Videos</TableHead>
             <TableHead className="text-right">Contract</TableHead>
             <TableHead className="text-right">Advance</TableHead>
@@ -283,7 +289,7 @@ export default function PaymentsPage() {
                 ? row.advance_payment - totalPaid
                 : row.contract_amount - totalPaid;
               const brandSlug = row.projects?.brands?.slug;
-              const hasPaymentEmail = !!row.payment_email;
+              const hasPaymentInfo = row.payment_method === 'ach' ? !!row.ach_account_name : !!row.payment_email;
               const videoCount = (row.videos || []).length;
 
               return (
@@ -291,7 +297,7 @@ export default function PaymentsPage() {
                   key={`${row.id}-${row._paymentType}`}
                   className={cn(
                     'cursor-pointer',
-                    hasPaymentEmail
+                    hasPaymentInfo
                       ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30'
                       : 'hover:bg-muted/50'
                   )}
@@ -338,7 +344,23 @@ export default function PaymentsPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {row.payment_email ? (
+                    {row.payment_method === 'ach' ? (
+                      row.ach_account_name ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-blue-700 truncate max-w-[180px]">
+                              ACH: {row.ach_bank_name}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground truncate max-w-[180px]">
+                              {row.ach_account_name}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-red-400">ACH (incomplete)</span>
+                      )
+                    ) : row.payment_email ? (
                       <div className="flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                         <p className="text-sm truncate max-w-[180px] font-medium text-emerald-700">
@@ -520,16 +542,42 @@ export default function PaymentsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="pay-email">Payment Email</Label>
-                  <Input
-                    id="pay-email"
-                    type="email"
-                    value={paymentForm.payment_email}
-                    onChange={(e) => setPaymentForm(prev => ({ ...prev, payment_email: e.target.value }))}
-                    disabled={addingPayment}
-                  />
-                </div>
+                {paymentTarget.payment_method === 'ach' ? (
+                  <div className="space-y-2">
+                    <Label>Payment Method: ACH</Label>
+                    <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account Name</span>
+                        <span className="font-medium">{paymentTarget.ach_account_name || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Bank</span>
+                        <span className="font-medium">{paymentTarget.ach_bank_name || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account #</span>
+                        <span className="font-medium font-mono">{paymentTarget.ach_account_number || 'N/A'}</span>
+                      </div>
+                      {paymentTarget.ach_beneficiary_address && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Address</span>
+                          <span className="font-medium text-right max-w-[200px]">{paymentTarget.ach_beneficiary_address}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="pay-email">Payment Email (PayPal)</Label>
+                    <Input
+                      id="pay-email"
+                      type="email"
+                      value={paymentForm.payment_email}
+                      onChange={(e) => setPaymentForm(prev => ({ ...prev, payment_email: e.target.value }))}
+                      disabled={addingPayment}
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="pay-amount">Amount ($)</Label>

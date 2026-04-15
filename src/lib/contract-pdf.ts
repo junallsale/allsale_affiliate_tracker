@@ -24,6 +24,11 @@ export interface ContractData {
   shippingName?: string;
   shippingAddress?: string;
   contractNotes?: string;
+  paymentMethod?: 'paypal' | 'ach';
+  achAccountName?: string;
+  achBankName?: string;
+  achAccountNumber?: string;
+  achBeneficiaryAddress?: string;
 }
 
 /** Generate SHA-256 hash of contract data for integrity verification */
@@ -111,7 +116,15 @@ export async function generateContractPdf(data: ContractData, contractHash: stri
   if (data.commissionRate > 0) {
     addLine(`Commission Rate: ${data.commissionRate}% of GMV`);
   }
-  addLine(`Payment Method: PayPal (${data.paymentEmail})`);
+  if (data.paymentMethod === 'ach') {
+    addLine('Payment Method: ACH (Bank Transfer)');
+    if (data.achAccountName) addLine(`Account Name: ${data.achAccountName}`);
+    if (data.achBankName) addLine(`Bank: ${data.achBankName}`);
+    if (data.achAccountNumber) addLine(`Account Number: ${data.achAccountNumber}`);
+    if (data.achBeneficiaryAddress) addLine(`Beneficiary Address: ${data.achBeneficiaryAddress}`);
+  } else {
+    addLine(`Payment Method: PayPal (${data.paymentEmail})`);
+  }
   addGap(6);
 
   // ── Terms ──

@@ -33,6 +33,7 @@ interface PCData {
   spark_ads_duration: number | null;
   contract_notes: string | null;
   payment_email: string | null;
+  payment_method: string;
   status: string;
   legal_name: string | null;
   signature_url: string | null;
@@ -203,6 +204,10 @@ export default function CreatorPublicPage() {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [legalName, setLegalName] = useState('');
   const [paymentEmail, setPaymentEmail] = useState('');
+  const [achAccountName, setAchAccountName] = useState('');
+  const [achBankName, setAchBankName] = useState('');
+  const [achAccountNumber, setAchAccountNumber] = useState('');
+  const [achBeneficiaryAddress, setAchBeneficiaryAddress] = useState('');
   const [contractEmail, setContractEmail] = useState('');
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [signSubmitting, setSignSubmitting] = useState(false);
@@ -290,9 +295,14 @@ export default function CreatorPublicPage() {
       setSignError('Please enter your legal name.');
       return;
     }
+    const isAch = pcData?.payment_method === 'ach';
     const emailToUse = paymentEmail.trim() || pcData?.payment_email || '';
-    if (!emailToUse || !/\S+@\S+\.\S+/.test(emailToUse)) {
+    if (!isAch && (!emailToUse || !/\S+@\S+\.\S+/.test(emailToUse))) {
       setSignError('Please enter a valid payment email.');
+      return;
+    }
+    if (isAch && (!achAccountName.trim() || !achBankName.trim() || !achAccountNumber.trim())) {
+      setSignError('Please fill in all bank details (account name, bank name, account number).');
       return;
     }
     if (!signatureDataUrl) {
@@ -320,8 +330,17 @@ export default function CreatorPublicPage() {
       const formData = new FormData();
       formData.append('project_creator_id', pcData.id);
       formData.append('legal_name', legalName.trim());
-      formData.append('payment_email', emailToUse);
-      formData.append('contract_email', contractEmail.trim() || emailToUse);
+      formData.append('payment_method', pcData.payment_method || 'paypal');
+      if (isAch) {
+        formData.append('payment_email', '');
+        formData.append('ach_account_name', achAccountName.trim());
+        formData.append('ach_bank_name', achBankName.trim());
+        formData.append('ach_account_number', achAccountNumber.trim());
+        formData.append('ach_beneficiary_address', achBeneficiaryAddress.trim());
+      } else {
+        formData.append('payment_email', emailToUse);
+      }
+      formData.append('contract_email', contractEmail.trim() || (isAch ? '' : emailToUse));
       formData.append('signature', blob, 'signature.png');
       if (requireShipping) {
         formData.append('shipping_name', shippingName.trim());
@@ -355,7 +374,7 @@ export default function CreatorPublicPage() {
     } finally {
       setSignSubmitting(false);
     }
-  }, [legalName, paymentEmail, signatureDataUrl, pcData, shippingName, shippingAddress, shippingPhone]);
+  }, [legalName, paymentEmail, signatureDataUrl, pcData, shippingName, shippingAddress, shippingPhone, achAccountName, achBankName, achAccountNumber, achBeneficiaryAddress]);
 
   // Handle video submission
   const handleSubmitVideo = async (e: React.FormEvent) => {
@@ -545,7 +564,7 @@ export default function CreatorPublicPage() {
                   <div className="space-y-1 text-muted-foreground">
                     <p>• Advance: paid within 3 business days of signing</p>
                     <p>• Remaining: paid within 3 business days after all video post links are submitted</p>
-                    <p>• Payment via PayPal</p>
+                    <p>• Payment via {pcData?.payment_method === 'ach' ? 'ACH (Bank Transfer)' : 'PayPal'}</p>
                     <p>• Creator is responsible for any taxes or fees</p>
                   </div>
 
@@ -581,22 +600,55 @@ export default function CreatorPublicPage() {
                   />
                 </div>
 
-                {/* Payment Email */}
-                <div className="space-y-2">
-                  <Label htmlFor="payment-email" className="text-sm font-medium">
-                    Payment Email <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="payment-email"
-                    type="email"
-                    placeholder="your@email.com"
-                    value={paymentEmail}
-                    onChange={(e) => setPaymentEmail(e.target.value)}
-                  />
-                  <div className="text-xs text-muted-foreground space-y-1 p-2.5 rounded-md bg-muted/50">
-                    <p>Payment will be sent via <strong>PayPal</strong> to this email address.</p>
+                {/* Payment Details */}
+                {pcData?.payment_method === 'ach' ? (
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium">
+                      Bank Account Details (ACH) <span className="text-destructive">*</span>
+                    </Label>
+                    <div className="text-xs text-muted-foreground p-2.5 rounded-md bg-muted/50">
+                      <p>Payment will be sent via <strong>ACH bank transfer</strong>.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Account Name (e.g. John Doe)"
+                        value={achAccountName}
+                        onChange={(e) => setAchAccountName(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Bank Name (e.g. Chase, Bank of America)"
+                        value={achBankName}
+                        onChange={(e) => setAchBankName(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Account Number"
+                        value={achAccountNumber}
+                        onChange={(e) => setAchAccountNumber(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Beneficiary Address (full address)"
+                        value={achBeneficiaryAddress}
+                        onChange={(e) => setAchBeneficiaryAddress(e.target.value)}
+                      />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="payment-email" className="text-sm font-medium">
+                      Payment Email <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="payment-email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={paymentEmail}
+                      onChange={(e) => setPaymentEmail(e.target.value)}
+                    />
+                    <div className="text-xs text-muted-foreground space-y-1 p-2.5 rounded-md bg-muted/50">
+                      <p>Payment will be sent via <strong>PayPal</strong> to this email address.</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Contract Email */}
                 <div className="space-y-2">
@@ -676,7 +728,7 @@ export default function CreatorPublicPage() {
                 <Button
                   className="w-full"
                   onClick={handleSignatureSubmit}
-                  disabled={signSubmitting || !legalName.trim() || (!paymentEmail.trim() && !pcData?.payment_email) || !signatureDataUrl || (pcData?.projects?.require_shipping_address && (!shippingName.trim() || !shippingAddress.trim() || !shippingPhone.trim()))}
+                  disabled={signSubmitting || !legalName.trim() || !signatureDataUrl || (pcData?.payment_method === 'ach' ? (!achAccountName.trim() || !achBankName.trim() || !achAccountNumber.trim()) : (!paymentEmail.trim() && !pcData?.payment_email)) || (pcData?.projects?.require_shipping_address && (!shippingName.trim() || !shippingAddress.trim() || !shippingPhone.trim()))}
                 >
                   {signSubmitting ? (
                     <>
