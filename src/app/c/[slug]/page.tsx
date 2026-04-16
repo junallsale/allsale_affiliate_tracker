@@ -579,8 +579,19 @@ export default function CreatorPublicPage() {
                     <p>• Spark Ads access: must share after posting{pcData?.spark_ads_duration ? ` (${pcData.spark_ads_duration} days)` : ''}</p>
                     {pcData?.projects?.require_draft_review && (
                       <>
-                        <p>• A draft must be submitted for review before posting</p>
+                        <p>• Creator must follow the content guidelines and submit a draft for review before posting</p>
                         <p>• Up to 2 revisions per video are allowed</p>
+                        {products.filter(p => p.content_guide_url).length > 0 && (
+                          <div className="pl-3 space-y-0.5">
+                            {products.filter(p => p.content_guide_url).map(p => (
+                              <p key={p.id}>
+                                <a href={p.content_guide_url!} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                                  {p.name} - Content Guide
+                                </a>
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </>
                     )}
                     {pcData?.contract_notes && (

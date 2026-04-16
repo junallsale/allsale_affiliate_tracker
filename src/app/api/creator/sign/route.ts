@@ -156,7 +156,7 @@ async function generateAndSendContract(
       assigned_video_count, content_type, contract_notes,
       creator:creators(name, tiktok_handle, email),
       project:projects(name, submission_deadline, require_draft_review, brand:brands(name)),
-      project_creator_products:project_creator_products(product:products(name))
+      project_creator_products:project_creator_products(product:products(name, content_guide_url))
     `)
     .eq("id", projectCreatorId)
     .single();
@@ -166,7 +166,11 @@ async function generateAndSendContract(
   const creator = pc.creator as any;
   const project = (pc as any).project as any;
   const brand = project?.brand as any;
-  const products = ((pc as any).project_creator_products || []).map((p: any) => p.product?.name).filter(Boolean);
+  const pcProducts = ((pc as any).project_creator_products || []).map((p: any) => p.product).filter(Boolean);
+  const products = pcProducts.map((p: any) => p.name).filter(Boolean);
+  const productGuideUrls = pcProducts
+    .filter((p: any) => p.name && p.content_guide_url)
+    .map((p: any) => ({ name: p.name, url: p.content_guide_url }));
 
   const contractData: ContractData = {
     projectCreatorId,
@@ -196,6 +200,7 @@ async function generateAndSendContract(
     achBeneficiaryAddress: params.achBeneficiaryAddress,
     achRoutingNumber: params.achRoutingNumber,
     requireDraftReview: project?.require_draft_review || false,
+    productGuideUrls: (project?.require_draft_review && productGuideUrls.length > 0) ? productGuideUrls : undefined,
   };
 
   // Generate hash

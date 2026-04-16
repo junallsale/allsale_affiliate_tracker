@@ -31,6 +31,7 @@ export interface ContractData {
   achBeneficiaryAddress?: string;
   achRoutingNumber?: string;
   requireDraftReview?: boolean;
+  productGuideUrls?: { name: string; url: string }[];
 }
 
 /** Generate SHA-256 hash of contract data for integrity verification */
@@ -142,11 +143,20 @@ export async function generateContractPdf(data: ContractData, contractHash: stri
     '5. All content must comply with TikTok\'s community guidelines and FTC disclosure requirements.',
   ];
   if (data.requireDraftReview) {
-    terms.push('6. Creator must submit a draft for review before posting. Up to 2 revisions per video are allowed.');
+    terms.push('6. Creator must follow the content guidelines provided and submit a draft for review before posting. Up to 2 revisions per video are allowed.');
   }
   for (const term of terms) {
     addLine(term, 9);
     addGap(1);
+  }
+  if (data.requireDraftReview && data.productGuideUrls && data.productGuideUrls.length > 0) {
+    addGap(3);
+    addLine('Content Guidelines', 11, 'bold');
+    addGap(2);
+    for (const pg of data.productGuideUrls) {
+      addLine(`${pg.name}: ${pg.url}`, 9);
+      addGap(1);
+    }
   }
   if (data.contractNotes) {
     addGap(3);
