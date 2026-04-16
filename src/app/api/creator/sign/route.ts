@@ -155,7 +155,7 @@ async function generateAndSendContract(
       id, contract_amount, advance_payment, remaining_payment, commission_rate,
       assigned_video_count, content_type, contract_notes,
       creator:creators(name, tiktok_handle, email),
-      project:projects(name, submission_deadline, brand:brands(name)),
+      project:projects(name, submission_deadline, require_draft_review, brand:brands(name)),
       project_creator_products:project_creator_products(product:products(name))
     `)
     .eq("id", projectCreatorId)
@@ -195,6 +195,7 @@ async function generateAndSendContract(
     achAccountNumber: params.achAccountNumber,
     achBeneficiaryAddress: params.achBeneficiaryAddress,
     achRoutingNumber: params.achRoutingNumber,
+    requireDraftReview: project?.require_draft_review || false,
   };
 
   // Generate hash

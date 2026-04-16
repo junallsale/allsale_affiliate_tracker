@@ -45,6 +45,7 @@ interface PCData {
     status: string;
     submission_deadline: string | null;
     require_shipping_address: boolean;
+    require_draft_review: boolean;
     brands: {
       id: string;
       name: string;
@@ -576,6 +577,12 @@ export default function CreatorPublicPage() {
                   <div className="space-y-1 text-muted-foreground">
                     <p>• Tag the brand official account</p>
                     <p>• Spark Ads access: must share after posting{pcData?.spark_ads_duration ? ` (${pcData.spark_ads_duration} days)` : ''}</p>
+                    {pcData?.projects?.require_draft_review && (
+                      <>
+                        <p>• A draft must be submitted for review before posting</p>
+                        <p>• Up to 2 revisions per video are allowed</p>
+                      </>
+                    )}
                     {pcData?.contract_notes && (
                       <p>• {pcData.contract_notes}</p>
                     )}

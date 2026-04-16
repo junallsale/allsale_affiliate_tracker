@@ -4,7 +4,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send } from 'lucide-react';
+import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send, FileText } from 'lucide-react';
 import Papa from 'papaparse';
 
 const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
@@ -954,6 +954,23 @@ export default function ProjectDetailPage() {
                 >
                   <Package className="w-3 h-3 inline mr-1" />
                   {(project as any).require_shipping_address ? 'Shipping Address: ON' : 'Shipping Address: OFF'}
+                </button>
+                {/* Draft review toggle */}
+                <button
+                  className={cn(
+                    'mt-1 text-xs px-2 py-0.5 rounded-full border transition-colors',
+                    (project as any).require_draft_review
+                      ? 'bg-orange-50 border-orange-300 text-orange-700'
+                      : 'border-muted-foreground/20 text-muted-foreground hover:border-muted-foreground/40'
+                  )}
+                  onClick={async () => {
+                    const newVal = !(project as any).require_draft_review;
+                    const { error } = await supabase.from('projects').update({ require_draft_review: newVal }).eq('id', project.id);
+                    if (!error) setProject(prev => prev ? { ...prev, require_draft_review: newVal } as any : prev);
+                  }}
+                >
+                  <FileText className="w-3 h-3 inline mr-1" />
+                  {(project as any).require_draft_review ? 'Draft Review: ON' : 'Draft Review: OFF'}
                 </button>
                 {/* Welcome email template override */}
                 <button

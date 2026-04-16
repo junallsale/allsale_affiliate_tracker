@@ -30,6 +30,7 @@ export interface ContractData {
   achAccountNumber?: string;
   achBeneficiaryAddress?: string;
   achRoutingNumber?: string;
+  requireDraftReview?: boolean;
 }
 
 /** Generate SHA-256 hash of contract data for integrity verification */
@@ -140,6 +141,9 @@ export async function generateContractPdf(data: ContractData, contractHash: stri
     '4. Either party may terminate this agreement with written notice. Compensation will be prorated for completed work.',
     '5. All content must comply with TikTok\'s community guidelines and FTC disclosure requirements.',
   ];
+  if (data.requireDraftReview) {
+    terms.push('6. Creator must submit a draft for review before posting. Up to 2 revisions per video are allowed.');
+  }
   for (const term of terms) {
     addLine(term, 9);
     addGap(1);
