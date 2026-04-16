@@ -227,7 +227,7 @@ export default function CreatorPublicPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const isSigned = !!(pcData?.legal_name && pcData?.signature_url);
+  const isSigned = !!(pcData?.signed_at);
 
   // Fetch data
   useEffect(() => {
