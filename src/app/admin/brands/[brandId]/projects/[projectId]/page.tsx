@@ -4,7 +4,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send, FileText, ClipboardCheck } from 'lucide-react';
 import Papa from 'papaparse';
 
 const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
@@ -113,6 +113,10 @@ export default function ProjectDetailPage() {
   const [welcomeBody, setWelcomeBody] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
 
+  // Project memos
+  const [projectMemos, setProjectMemos] = useState<{ id: string; content: string; is_checked: boolean; author_name: string | null; created_at: string }[]>([]);
+  const [newMemoText, setNewMemoText] = useState('');
+
   // Send email dialog
   const [emailTarget, setEmailTarget] = useState<PCWithDetails | null>(null);
   const [emailAccounts, setEmailAccounts] = useState<{ id: string; email: string }[]>([]);
@@ -199,6 +203,14 @@ export default function ProjectDetailPage() {
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
       if (linksData) setSampleLinks(linksData);
+
+      // Fetch project memos
+      const { data: memosData } = await supabase
+        .from('project_memos')
+        .select('id, content, is_checked, author_name, created_at')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
+      if (memosData) setProjectMemos(memosData);
 
       // Fetch email accounts
       const acctRes = await fetch('/api/email-accounts');
@@ -991,6 +1003,97 @@ export default function ProjectDetailPage() {
         </div>
 
         {/* Sample invitation links are now managed per-product in creator detail page */}
+
+        {/* Project Memos / Checklist */}
+        {(projectMemos.length > 0 || newMemoText !== '') && (
+          <div className="max-w-7xl mx-auto px-6 pt-6">
+            <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/10">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <ClipboardCheck className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-semibold text-amber-800">Internal Checklist</span>
+                  <span className="text-xs text-amber-600/70">
+                    {projectMemos.filter(m => m.is_checked).length}/{projectMemos.length} done
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {projectMemos.map(memo => (
+                    <div key={memo.id} className="flex items-start gap-2 group">
+                      <button
+                        className={cn(
+                          'mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                          memo.is_checked
+                            ? 'bg-emerald-500 border-emerald-500'
+                            : 'border-amber-400 hover:border-emerald-400'
+                        )}
+                        onClick={async () => {
+                          const newVal = !memo.is_checked;
+                          await supabase.from('project_memos').update({ is_checked: newVal }).eq('id', memo.id);
+                          setProjectMemos(prev => prev.map(m => m.id === memo.id ? { ...m, is_checked: newVal } : m));
+                        }}
+                      >
+                        {memo.is_checked && <Check className="w-3 h-3 text-white" />}
+                      </button>
+                      <span className={cn(
+                        'text-sm flex-1',
+                        memo.is_checked && 'line-through text-muted-foreground'
+                      )}>
+                        {memo.content}
+                      </span>
+                      <button
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity"
+                        onClick={async () => {
+                          await supabase.from('project_memos').delete().eq('id', memo.id);
+                          setProjectMemos(prev => prev.filter(m => m.id !== memo.id));
+                        }}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <form
+                  className="flex gap-2 mt-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newMemoText.trim()) return;
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const authorName = session?.user?.email?.split('@')[0] || null;
+                    const { data } = await supabase.from('project_memos').insert({
+                      project_id: projectId,
+                      content: newMemoText.trim(),
+                      author_name: authorName,
+                    }).select('id, content, is_checked, author_name, created_at').single();
+                    if (data) setProjectMemos(prev => [...prev, data]);
+                    setNewMemoText('');
+                  }}
+                >
+                  <Input
+                    placeholder="Add checklist item..."
+                    value={newMemoText}
+                    onChange={(e) => setNewMemoText(e.target.value)}
+                    className="h-8 text-sm bg-white/70"
+                  />
+                  <Button type="submit" size="sm" variant="outline" className="h-8 text-xs shrink-0" disabled={!newMemoText.trim()}>
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+        {projectMemos.length === 0 && newMemoText === '' && (
+          <div className="max-w-7xl mx-auto px-6 pt-6">
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+              onClick={() => setNewMemoText(' ')}
+            >
+              <Plus className="w-3 h-3" />
+              Add internal checklist
+            </button>
+          </div>
+        )}
 
         <div className="max-w-7xl mx-auto p-6 space-y-6">
           {/* Stats Cards */}
