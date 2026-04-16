@@ -22,6 +22,8 @@ interface CreatorMaster {
   email: string | null;
   category: string | null;
   gender: string | null;
+  language: string | null;
+  race: string | null;
   consistency: string | null;
   tier: number | null;
   gmv: number | null;
@@ -136,7 +138,7 @@ export default function CreatorsPage() {
   const [pageSize, setPageSize] = useState(20);
 
   // Inline editing
-  const [inlineEdit, setInlineEdit] = useState<{ id: string; handle: string; field: 'tier' | 'category' | 'gender' | 'consistency'; value: string; rect?: { top: number; left: number } } | null>(null);
+  const [inlineEdit, setInlineEdit] = useState<{ id: string; handle: string; field: 'tier' | 'category' | 'gender' | 'language' | 'race' | 'consistency'; value: string; rect?: { top: number; left: number } } | null>(null);
 
   // History dialog
   const [historyTarget, setHistoryTarget] = useState<CreatorMaster | null>(null);
@@ -172,12 +174,16 @@ export default function CreatorsPage() {
   }, [supabase]);
 
   // Pass the value directly to avoid stale closure issues
-  const saveInlineField = useCallback(async (id: string, handle: string, field: 'tier' | 'category' | 'gender' | 'consistency', rawValue: string) => {
+  const saveInlineField = useCallback(async (id: string, handle: string, field: 'tier' | 'category' | 'gender' | 'language' | 'race' | 'consistency', rawValue: string) => {
     const updates: Record<string, unknown> = {};
     if (field === 'tier') {
       updates.tier = rawValue ? parseInt(rawValue) : null;
     } else if (field === 'gender') {
       updates.gender = rawValue.trim() || null;
+    } else if (field === 'language') {
+      updates.language = rawValue.trim() || null;
+    } else if (field === 'race') {
+      updates.race = rawValue.trim() || null;
     } else if (field === 'consistency') {
       updates.consistency = rawValue.trim() || null;
     } else {
@@ -236,7 +242,7 @@ export default function CreatorsPage() {
     result.sort((a, b) => {
       const aRaw = (a as any)[sortField];
       const bRaw = (b as any)[sortField];
-      if (sortField === 'handle' || sortField === 'category' || sortField === 'gender' || sortField === 'consistency' || sortField === 'updated_at') {
+      if (sortField === 'handle' || sortField === 'category' || sortField === 'gender' || sortField === 'language' || sortField === 'race' || sortField === 'consistency' || sortField === 'updated_at') {
         const aStr = (aRaw || '').toString();
         const bStr = (bRaw || '').toString();
         return sortAsc ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
@@ -275,11 +281,11 @@ export default function CreatorsPage() {
   );
 
   const handleDownloadCsv = () => {
-    const header = 'Handle,GMV,Avg View,Followers,Price/Video,Tier,Category,Gender,Consistency,Projects,Total Contract,Videos Assigned,Videos Uploaded';
+    const header = 'Handle,GMV,Avg View,Followers,Price/Video,Tier,Category,Gender,Language,Race,Consistency,Projects,Total Contract,Videos Assigned,Videos Uploaded';
     const rows = filtered.map(c => [
       c.handle, Math.round(Number(c.gmv) || 0), Math.round(Number(c.avg_view) || 0),
       Math.round(Number(c.followers) || 0), Math.round(Number(c.price_per_video) || 0),
-      c.tier || '', c.category || '', c.gender || '', c.consistency || '',
+      c.tier || '', c.category || '', c.gender || '', c.language || '', c.race || '', c.consistency || '',
       c.total_projects, Math.round(Number(c.total_contracts) || 0),
       c.total_videos_assigned, c.total_videos_uploaded,
     ].join(','));
@@ -362,6 +368,8 @@ export default function CreatorsPage() {
                   <TableHead className="cursor-pointer" onClick={() => handleSort('tier')}>Tier <SortIcon field="tier" /></TableHead>
                   <TableHead className="cursor-pointer min-w-[140px]" onClick={() => handleSort('category')}>Category <SortIcon field="category" /></TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort('gender')}>Gender <SortIcon field="gender" /></TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort('language')}>Language <SortIcon field="language" /></TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort('race')}>Race <SortIcon field="race" /></TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort('consistency')}>Consistency <SortIcon field="consistency" /></TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort('total_projects')}>Projects <SortIcon field="total_projects" /></TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort('total_contracts')}>Contract <SortIcon field="total_contracts" /></TableHead>
@@ -492,6 +500,82 @@ export default function CreatorsPage() {
                               'bg-muted text-muted-foreground'
                             )}>
                               {c.gender ? c.gender.charAt(0).toUpperCase() + c.gender.slice(1) : '-'}
+                            </span>
+                          )}
+                        </TableCell>
+
+                        {/* Language — inline editable */}
+                        <TableCell
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInlineEdit({ id: c.id, handle: c.handle, field: 'language', value: c.language || '' });
+                          }}
+                          className="min-w-[80px]"
+                          title="Click to edit language"
+                        >
+                          {inlineEdit?.id === c.id && inlineEdit.field === 'language' ? (
+                            <select
+                              autoFocus
+                              defaultValue={c.language || ''}
+                              onChange={(e) => saveInlineField(c.id, c.handle, 'language', e.target.value)}
+                              onBlur={() => setInlineEdit(null)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="border rounded px-1 text-sm w-24"
+                            >
+                              <option value="">-</option>
+                              <option value="English">English</option>
+                              <option value="Spanish">Spanish</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          ) : (
+                            <span className={cn(
+                              'px-2 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-70',
+                              c.language === 'English' ? 'bg-indigo-100 text-indigo-700' :
+                              c.language === 'Spanish' ? 'bg-amber-100 text-amber-700' :
+                              c.language ? 'bg-muted text-muted-foreground' :
+                              'bg-muted text-muted-foreground'
+                            )}>
+                              {c.language || '-'}
+                            </span>
+                          )}
+                        </TableCell>
+
+                        {/* Race — inline editable */}
+                        <TableCell
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInlineEdit({ id: c.id, handle: c.handle, field: 'race', value: c.race || '' });
+                          }}
+                          className="min-w-[80px]"
+                          title="Click to edit race"
+                        >
+                          {inlineEdit?.id === c.id && inlineEdit.field === 'race' ? (
+                            <select
+                              autoFocus
+                              defaultValue={c.race || ''}
+                              onChange={(e) => saveInlineField(c.id, c.handle, 'race', e.target.value)}
+                              onBlur={() => setInlineEdit(null)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="border rounded px-1 text-sm w-24"
+                            >
+                              <option value="">-</option>
+                              <option value="White">White</option>
+                              <option value="Black">Black</option>
+                              <option value="Hispanic">Hispanic</option>
+                              <option value="Asian">Asian</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          ) : (
+                            <span className={cn(
+                              'px-2 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-70',
+                              c.race === 'White' ? 'bg-slate-100 text-slate-700' :
+                              c.race === 'Black' ? 'bg-violet-100 text-violet-700' :
+                              c.race === 'Hispanic' ? 'bg-orange-100 text-orange-700' :
+                              c.race === 'Asian' ? 'bg-teal-100 text-teal-700' :
+                              c.race ? 'bg-muted text-muted-foreground' :
+                              'bg-muted text-muted-foreground'
+                            )}>
+                              {c.race || '-'}
                             </span>
                           )}
                         </TableCell>
