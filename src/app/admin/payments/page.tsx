@@ -58,7 +58,7 @@ interface PaymentCreatorRow {
     brands: { id: string; name: string; slug: string };
   };
   payments: { id: string; amount: number; payment_date: string }[];
-  videos: { id: string }[];
+  videos: { id: string; status: string }[];
 }
 
 type PaymentType = 'advance' | 'remaining';
@@ -113,7 +113,7 @@ export default function PaymentsPage() {
           creators(id, name, tiktok_handle, email),
           projects(id, name, brand_id, brands(id, name, slug)),
           payments(id, amount, payment_date),
-          videos(id)
+          videos(id, status)
         `)
         .not('signed_at', 'is', null)
         .or('is_deleted.is.null,is_deleted.eq.false');
@@ -136,7 +136,7 @@ export default function PaymentsPage() {
       // Remaining: videos all uploaded AND remaining_payment > 0 AND total paid < contract_amount
       allRows.forEach((row) => {
         if (row.remaining_payment > 0) {
-          const videoCount = (row.videos || []).length;
+          const videoCount = (row.videos || []).filter((v: any) => v.status !== 'rejected').length;
           if (videoCount >= row.assigned_video_count && row.posting_confirmed) {
             const totalPaid = (row.payments || []).reduce((sum, p) => sum + p.amount, 0);
             if (totalPaid < row.contract_amount) {
@@ -292,7 +292,7 @@ export default function PaymentsPage() {
                 : row.contract_amount - totalPaid;
               const brandSlug = row.projects?.brands?.slug;
               const hasPaymentInfo = row.payment_method === 'ach' ? !!row.ach_account_name : !!row.payment_email;
-              const videoCount = (row.videos || []).length;
+              const videoCount = (row.videos || []).filter((v: any) => v.status !== 'rejected').length;
 
               return (
                 <TableRow

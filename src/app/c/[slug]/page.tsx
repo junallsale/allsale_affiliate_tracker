@@ -74,6 +74,7 @@ interface VideoData {
   like_count: number;
   comment_count: number;
   share_count: number;
+  status: string;
   created_at: string;
 }
 
@@ -452,8 +453,9 @@ export default function CreatorPublicPage() {
   const creator = pcData.creators;
   const brand = project?.brands;
   const assignedCount = pcData.assigned_video_count || 1;
-  const progressPercent = (videos.length / assignedCount) * 100;
-  const allVideosSubmitted = videos.length >= assignedCount;
+  const activeVideos = videos.filter(v => v.status !== 'rejected');
+  const progressPercent = (activeVideos.length / assignedCount) * 100;
+  const allVideosSubmitted = activeVideos.length >= assignedCount;
   const isLive = pcData.content_type === 'live_shopping';
   const contentLabel = isLive ? 'LIVE Sessions' : 'Videos';
 
@@ -818,7 +820,7 @@ export default function CreatorPublicPage() {
               <div className="flex justify-between items-center text-sm">
                 <span className="font-medium">{contentLabel} Uploaded</span>
                 <span className="text-muted-foreground">
-                  {videos.length} of {assignedCount}
+                  {activeVideos.length} of {assignedCount}
                 </span>
               </div>
               <Progress value={Math.min(progressPercent, 100)} className="h-2" />

@@ -58,7 +58,7 @@ interface ChecklistRow {
   project_creator_reminds: { id: string; remind_date: string; note: string | null; author_name: string | null; created_at: string }[];
   project_creator_reviews: { id: string; review_date: string; note: string | null; status: string; author_name: string | null; resolve_note: string | null; created_at: string }[];
   payments: { id: string; amount: number }[];
-  videos: { id: string }[];
+  videos: { id: string; status: string }[];
   posting_confirmed: boolean;
 }
 
@@ -119,7 +119,7 @@ export default function ChecklistPage() {
         project_creator_reminds(id, remind_date, note, author_name, created_at),
         project_creator_reviews(id, review_date, note, status, author_name, resolve_note, created_at),
         payments(id, amount),
-        videos(id)
+        videos(id, status)
       `)
       .or('is_deleted.is.null,is_deleted.eq.false')
       .order('created_at', { ascending: false });
@@ -154,7 +154,7 @@ export default function ChecklistPage() {
       const totalPaid = (r.payments || []).reduce((s, p) => s + p.amount, 0);
       if (r.advance_payment > 0 && totalPaid < r.advance_payment) return false;
       // No videos yet
-      return (r.videos || []).length < (r.assigned_video_count || 1);
+      return (r.videos || []).filter(v => v.status !== 'rejected').length < (r.assigned_video_count || 1);
     }),
     [allRows],
   );
@@ -168,7 +168,7 @@ export default function ChecklistPage() {
     () => allRows.filter(r => {
       if (r.posting_confirmed) return false;
       if (!r.signed_at) return false;
-      const videoCount = (r.videos || []).length;
+      const videoCount = (r.videos || []).filter(v => v.status !== 'rejected').length;
       return videoCount >= (r.assigned_video_count || 1);
     }),
     [allRows],

@@ -51,12 +51,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // Posting Complete: signed + all videos submitted + not confirmed
     const { data: pcRows } = await supabase
       .from('project_creators')
-      .select('id, assigned_video_count, videos(id)')
+      .select('id, assigned_video_count, videos(id, status)')
       .not('signed_at', 'is', null)
       .eq('posting_confirmed', false)
       .or('is_deleted.is.null,is_deleted.eq.false');
     const postingCount = (pcRows || []).filter(
-      (r: any) => ((r.videos as any[]) || []).length >= ((r as any).assigned_video_count || 1)
+      (r: any) => ((r.videos as any[]) || []).filter((v: any) => v.status !== 'rejected').length >= ((r as any).assigned_video_count || 1)
     ).length;
     setChecklistBadgeCount(reviewCount + postingCount);
   }, []);

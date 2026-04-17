@@ -601,8 +601,9 @@ export default function CreatorDetailPage() {
 
   const creator = pcData.creators;
   const project = pcData.projects;
-  const progressPercent = getProgressPercent(videos.length, pcData.assigned_video_count);
-  const creatorStatus = getCreatorStatus(videos.length, pcData.assigned_video_count);
+  const activeVideos = videos.filter(v => v.status !== 'rejected');
+  const progressPercent = getProgressPercent(activeVideos.length, pcData.assigned_video_count);
+  const creatorStatus = getCreatorStatus(activeVideos.length, pcData.assigned_video_count);
   const contractAmount = pcData.contract_amount || 0;
   const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const balance = contractAmount - totalPaid;
@@ -678,7 +679,7 @@ export default function CreatorDetailPage() {
               </p>
               {editingVideoCount ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{videos.length} /</span>
+                  <span className="text-sm text-muted-foreground">{activeVideos.length} /</span>
                   <Input
                     type="number"
                     min={0}
@@ -700,7 +701,7 @@ export default function CreatorDetailPage() {
               ) : (
                 <div className="flex items-center gap-3">
                   <Progress value={progressPercent} className="flex-1" />
-                  <span className="text-sm font-bold">{videos.length}/{pcData.assigned_video_count}</span>
+                  <span className="text-sm font-bold">{activeVideos.length}/{pcData.assigned_video_count}</span>
                 </div>
               )}
             </CardContent>
@@ -1463,7 +1464,7 @@ export default function CreatorDetailPage() {
         <div className="space-y-4">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Video className="w-5 h-5" />
-            Submitted Videos ({videos.length})
+            Submitted Videos ({activeVideos.length})
           </h2>
 
           {videos.length === 0 ? (
@@ -1483,11 +1484,12 @@ export default function CreatorDetailPage() {
                     <TableHead>Status</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead className="text-center">Spark Code</TableHead>
+                    <TableHead className="text-center w-[60px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {videos.map((video) => (
-                    <TableRow key={video.id}>
+                    <TableRow key={video.id} className={video.status === 'rejected' ? 'opacity-40 line-through' : ''}>
                       <TableCell>
                         <a
                           href={video.tiktok_url}
@@ -1502,7 +1504,7 @@ export default function CreatorDetailPage() {
                       <TableCell className="text-right text-sm">{(video.view_count || 0).toLocaleString()}</TableCell>
                       <TableCell className="text-right text-sm">{video.gmv ? `$${Number(video.gmv).toLocaleString()}` : '-'}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="text-xs">{video.status}</Badge>
+                        <Badge variant={video.status === 'rejected' ? 'destructive' : 'secondary'} className="text-xs">{video.status}</Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {new Date(video.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -1517,6 +1519,25 @@ export default function CreatorDetailPage() {
                         >
                           <Copy className="w-3 h-3" />
                         </Button>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {video.status !== 'rejected' ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={async () => {
+                              if (!confirm('Reject this video? The creator will need to submit a replacement.')) return;
+                              await supabase.from('videos').update({ status: 'rejected' }).eq('id', video.id);
+                              setVideos(prev => prev.map(v => v.id === video.id ? { ...v, status: 'rejected' } : v));
+                            }}
+                          >
+                            <X className="w-3 h-3 mr-0.5" />
+                            Reject
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">rejected</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
