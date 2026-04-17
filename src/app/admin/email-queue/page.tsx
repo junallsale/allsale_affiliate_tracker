@@ -194,9 +194,11 @@ export default function EmailQueuePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
-    // Fetch enriched drafts from optimized API (3 queries instead of N*3)
+    // Fetch enriched drafts from optimized API (3 queries instead of N*3).
+    // 'reminder' is a virtual filter — API fetches status=pending, client filters by classification.
     const params = new URLSearchParams();
-    if (statusFilter) params.set('status', statusFilter);
+    const apiStatus = statusFilter === 'reminder' ? 'pending' : statusFilter;
+    if (apiStatus) params.set('status', apiStatus);
     params.set('limit', '100');
 
     const res = await fetch(`/api/emails/drafts?${params}`);
@@ -237,9 +239,19 @@ export default function EmailQueuePage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtered = useMemo(() => {
-    if (!search) return drafts;
+    let list = drafts;
+
+    // Virtual classification filters applied client-side:
+    // 'pending' excludes reminders; 'reminder' shows only reminders.
+    if (statusFilter === 'pending') {
+      list = list.filter(d => d.classification !== 'reminder');
+    } else if (statusFilter === 'reminder') {
+      list = list.filter(d => d.classification === 'reminder');
+    }
+
+    if (!search) return list;
     const q = search.toLowerCase();
-    return drafts.filter(d => {
+    return list.filter(d => {
       const pc = d.project_creator;
       const em = d.email_message;
       return (
@@ -250,7 +262,7 @@ export default function EmailQueuePage() {
         (d.classification || '').toLowerCase().includes(q)
       );
     });
-  }, [drafts, search]);
+  }, [drafts, search, statusFilter]);
 
   const openSendDialog = (draft: EmailDraft) => {
     setSendDraft(draft);
@@ -430,7 +442,7 @@ export default function EmailQueuePage() {
             className="h-8 w-56 pl-8 text-sm"
           />
         </div>
-        {['pending', 'sent', 'dismissed', 'escalated', ''].map(s => (
+        {['pending', 'reminder', 'sent', 'dismissed', 'escalated', ''].map(s => (
           <Button
             key={s || 'all'}
             variant={statusFilter === s ? 'default' : 'outline'}
