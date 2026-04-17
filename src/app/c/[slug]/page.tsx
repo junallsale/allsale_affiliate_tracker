@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
-import { Loader2, CheckCircle2, Video, Eye, Heart, MessageCircle, Share2, ExternalLink, PenLine, Eraser } from 'lucide-react';
+import { Loader2, CheckCircle2, Video, Eye, Heart, MessageCircle, Share2, ExternalLink, PenLine, Eraser, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -993,8 +993,14 @@ export default function CreatorPublicPage() {
           <div className="space-y-4">
             <h2 className="text-lg font-semibold px-2">Submitted Videos</h2>
             {videos.map(video => (
-              <Card key={video.id}>
+              <Card key={video.id} className={video.status === 'rejected' ? 'opacity-50 border-red-200' : ''}>
                 <CardContent className="pt-4">
+                  {video.status === 'rejected' && (
+                    <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 rounded-md bg-red-50 text-red-600 text-xs font-medium">
+                      <X className="w-3 h-3" />
+                      Rejected - Please submit a new video to replace this one
+                    </div>
+                  )}
                   <div className="space-y-3">
                     <div className="aspect-video bg-muted rounded-lg overflow-hidden flex items-center justify-center">
                       {video.thumbnail_url ? (
