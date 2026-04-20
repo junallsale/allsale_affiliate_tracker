@@ -148,8 +148,9 @@ export async function composeEmail(params: ComposeParams): Promise<ComposeResult
 
   // Product info
   const products = (pc as any).project_creator_products || [];
+  const allProductNames = products.map((p: any) => p.product?.name).filter(Boolean);
+  const productName = allProductNames.join(', ') || '';
   const firstProduct = products[0]?.product;
-  const productName = firstProduct?.name || '';
   const contentGuideUrl = firstProduct?.content_guide_url || '';
 
   // Sample links from assigned products (not project-level)
