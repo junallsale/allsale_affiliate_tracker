@@ -213,19 +213,16 @@ export default function AffiliatesPage() {
 
     // Intercept Confirmed to show product selection dialog
     if (key === 'status' && value === 'Confirmed') {
-      const affiliate = affiliates.find(a => a.id === id);
-      const brandId = affiliate?.brand_id;
+      const supabase = createSupabaseBrowser();
+      const { data: aff } = await supabase.from('affiliate_creators').select('brand_id').eq('id', id).single();
+      const brandId = aff?.brand_id;
       if (brandId) {
-        const supabase = createSupabaseBrowser();
         const { data: prods } = await supabase.from('products').select('id, name').eq('brand_id', brandId).order('name');
         setConfirmProducts((prods || []) as { id: string; name: string }[]);
         setConfirmSelectedProducts(new Set());
         setConfirmTarget({ id, brandId });
-      } else {
-        // No brand, proceed without product selection
-        setConfirmTarget(null);
+        return; // Wait for dialog
       }
-      if (brandId) return; // Wait for dialog
     }
 
     // Optimistic update
