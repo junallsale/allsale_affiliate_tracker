@@ -49,6 +49,8 @@ interface PCFullData {
   creator_id: string;
   unique_slug: string;
   assigned_video_count: number;
+  content_type: string;
+  live_hours: number | null;
   contract_amount: number;
   advance_payment: number;
   remaining_payment: number;
@@ -168,6 +170,10 @@ export default function CreatorDetailPage() {
   const [editingCommission, setEditingCommission] = useState(false);
   const [commissionInput, setCommissionInput] = useState('');
   const [savingCommission, setSavingCommission] = useState(false);
+
+  const [editingLiveHours, setEditingLiveHours] = useState(false);
+  const [liveHoursInput, setLiveHoursInput] = useState('');
+  const [savingLiveHours, setSavingLiveHours] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -483,6 +489,24 @@ export default function CreatorDetailPage() {
     }
   };
 
+  const handleSaveLiveHours = async () => {
+    try {
+      setSavingLiveHours(true);
+      const hours = parseFloat(liveHoursInput) || 0;
+      const { error } = await supabase
+        .from('project_creators')
+        .update({ live_hours: hours })
+        .eq('id', pcId);
+      if (error) throw error;
+      setEditingLiveHours(false);
+      await fetchData();
+    } catch (error) {
+      console.error('Error saving live hours:', error);
+    } finally {
+      setSavingLiveHours(false);
+    }
+  };
+
   const handleEditContact = () => {
     setContactForm({
       contact_point: pcData?.contact_point || '',
@@ -706,6 +730,46 @@ export default function CreatorDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Live Hours - only for live_shopping */}
+          {pcData.content_type === 'live_shopping' && (
+            <Card
+              className={cn(isSuperAdmin && !editingLiveHours && 'cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all')}
+              onClick={() => isSuperAdmin && !editingLiveHours && (() => { setLiveHoursInput(String(pcData?.live_hours || 0)); setEditingLiveHours(true); })()}
+            >
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                  Live Hours
+                  {isSuperAdmin && !editingLiveHours && <Pencil className="w-3 h-3 opacity-40" />}
+                </p>
+                {editingLiveHours ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={liveHoursInput}
+                      onChange={(e) => setLiveHoursInput(e.target.value)}
+                      className="h-8 text-sm w-20"
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveLiveHours();
+                        if (e.key === 'Escape') setEditingLiveHours(false);
+                      }}
+                      disabled={savingLiveHours}
+                    />
+                    <span className="text-sm text-muted-foreground">hrs</span>
+                    <Button size="icon" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); handleSaveLiveHours(); }} disabled={savingLiveHours}>
+                      {savingLiveHours ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-2xl font-bold">{pcData.live_hours || 0} <span className="text-sm font-normal text-muted-foreground">hours</span></p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Contract - editable by super_admin and operator */}
           <Card

@@ -153,7 +153,7 @@ async function generateAndSendContract(
     .from("project_creators")
     .select(`
       id, contract_amount, advance_payment, remaining_payment, commission_rate,
-      assigned_video_count, content_type, contract_notes,
+      assigned_video_count, content_type, contract_notes, live_hours,
       creator:creators(name, tiktok_handle, email),
       project:projects(name, submission_deadline, require_draft_review, brand:brands(name)),
       project_creator_products:project_creator_products(product:products(name, content_guide_url))
@@ -199,6 +199,7 @@ async function generateAndSendContract(
     achAccountNumber: params.achAccountNumber,
     achBeneficiaryAddress: params.achBeneficiaryAddress,
     achRoutingNumber: params.achRoutingNumber,
+    liveHours: (pc as any).live_hours || undefined,
     requireDraftReview: project?.require_draft_review || false,
     productGuideUrls: (project?.require_draft_review && productGuideUrls.length > 0) ? productGuideUrls : undefined,
   };

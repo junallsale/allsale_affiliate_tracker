@@ -32,6 +32,7 @@ export interface ContractData {
   achRoutingNumber?: string;
   requireDraftReview?: boolean;
   productGuideUrls?: { name: string; url: string }[];
+  liveHours?: number;
 }
 
 /** Generate SHA-256 hash of contract data for integrity verification */
@@ -101,7 +102,11 @@ export async function generateContractPdf(data: ContractData, contractHash: stri
   addLine('Deliverables', 13, 'bold');
   addGap(2);
   addLine(`Content Type: ${data.contentType === 'shoppable_video' ? 'Shoppable Video' : 'LIVE Shopping'}`);
-  addLine(`Number of Videos: ${data.assignedVideoCount}`);
+  if (data.contentType === 'live_shopping' && data.liveHours) {
+    addLine(`LIVE Duration: ${data.liveHours} hours`);
+  } else {
+    addLine(`Number of Videos: ${data.assignedVideoCount}`);
+  }
   if (data.products.length > 0) {
     addLine(`Products: ${data.products.join(', ')}`);
   }

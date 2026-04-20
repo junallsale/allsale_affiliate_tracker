@@ -25,6 +25,7 @@ interface PCData {
   creator_id: string;
   unique_slug: string;
   assigned_video_count: number;
+  live_hours: number | null;
   content_type: 'shoppable_video' | 'live_shopping';
   contract_amount: number;
   advance_payment: number;
@@ -511,12 +512,19 @@ export default function CreatorPublicPage() {
                         {pcData?.content_type === 'live_shopping' ? 'LIVE Shopping' : 'Shoppable Video'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        {pcData?.content_type === 'live_shopping' ? 'LIVE Sessions' : 'Shoppable Videos'}
-                      </span>
-                      <span className="font-medium">{pcData?.assigned_video_count || 0}</span>
-                    </div>
+                    {pcData?.content_type === 'live_shopping' && pcData?.live_hours ? (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">LIVE Duration</span>
+                        <span className="font-medium">{pcData.live_hours} hours</span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          {pcData?.content_type === 'live_shopping' ? 'LIVE Sessions' : 'Shoppable Videos'}
+                        </span>
+                        <span className="font-medium">{pcData?.assigned_video_count || 0}</span>
+                      </div>
+                    )}
                     {products.length > 0 && (
                       <div>
                         <span className="text-muted-foreground">Products:</span>
