@@ -1,12 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Upload, UserPlus, FolderInput, Search, Columns3, Check } from 'lucide-react';
+import { Plus, Upload, UserPlus, FolderInput, Search, Columns3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
 import { AffiliateTable } from '@/components/affiliate-table/AffiliateTable';
 import ViewManager from '@/components/affiliate-table/ViewManager';
 import FilterBuilder from '@/components/affiliate-table/FilterBuilder';
@@ -60,11 +57,6 @@ export default function AffiliatesPage() {
   // Comments
   const [commentTarget, setCommentTarget] = useState<{ id: string; handle: string } | null>(null);
 
-  // Confirm status dialog (product selection)
-  const [confirmTarget, setConfirmTarget] = useState<{ id: string; brandId: string } | null>(null);
-  const [confirmProducts, setConfirmProducts] = useState<{ id: string; name: string }[]>([]);
-  const [confirmSelectedProducts, setConfirmSelectedProducts] = useState<Set<string>>(new Set());
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Active view
   const activeView = useMemo(
@@ -209,20 +201,6 @@ export default function AffiliatesPage() {
       setToast('❌ Operator cannot set status to Confirmed');
       setTimeout(() => setToast(null), 3000);
       return;
-    }
-
-    // Intercept Confirmed to show product selection dialog
-    if (key === 'status' && value === 'Confirmed') {
-      const supabase = createSupabaseBrowser();
-      const { data: aff } = await supabase.from('affiliate_creators').select('brand_id').eq('id', id).single();
-      const brandId = aff?.brand_id;
-      if (brandId) {
-        const { data: prods } = await supabase.from('products').select('id, name').eq('brand_id', brandId).order('name');
-        setConfirmProducts((prods || []) as { id: string; name: string }[]);
-        setConfirmSelectedProducts(new Set());
-        setConfirmTarget({ id, brandId });
-        return; // Wait for dialog
-      }
     }
 
     // Optimistic update
@@ -664,85 +642,6 @@ export default function AffiliatesPage() {
           onClose={() => setCommentTarget(null)}
         />
       )}
-
-      {/* Confirm Status Dialog with Product Selection */}
-      <Dialog open={!!confirmTarget} onOpenChange={(open) => { if (!open) setConfirmTarget(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Confirm Creator</DialogTitle>
-          </DialogHeader>
-          {confirmProducts.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-sm">Assign Products (optional)</Label>
-              <div className="border rounded-lg max-h-48 overflow-y-auto">
-                {confirmProducts.map(p => (
-                  <button
-                    key={p.id}
-                    className={cn(
-                      'w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-muted/50 border-b last:border-0',
-                      confirmSelectedProducts.has(p.id) && 'bg-emerald-50'
-                    )}
-                    onClick={() => setConfirmSelectedProducts(prev => {
-                      const next = new Set(prev);
-                      if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
-                      return next;
-                    })}
-                  >
-                    <div className={cn(
-                      'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0',
-                      confirmSelectedProducts.has(p.id) ? 'bg-emerald-500 border-emerald-500' : 'border-muted-foreground/30'
-                    )}>
-                      {confirmSelectedProducts.has(p.id) && <Check className="w-3 h-3 text-white" />}
-                    </div>
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {confirmProducts.length === 0 && (
-            <p className="text-sm text-muted-foreground">No products found for this brand.</p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmTarget(null)}>Cancel</Button>
-            <Button
-              disabled={confirmLoading}
-              onClick={async () => {
-                if (!confirmTarget) return;
-                setConfirmLoading(true);
-                try {
-                  const res = await fetch('/api/affiliates', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      id: confirmTarget.id,
-                      status: 'Confirmed',
-                      product_ids: Array.from(confirmSelectedProducts),
-                    }),
-                  });
-                  if (res.ok) {
-                    const updated = await res.json();
-                    setAffiliates(prev => prev.map(a => a.id === confirmTarget.id ? updated : a));
-                    setToast('✅ Creator added to project');
-                    setTimeout(() => setToast(null), 3000);
-                  } else {
-                    const err = await res.json();
-                    setToast(`❌ ${err.error || 'Update failed'}`);
-                    setTimeout(() => setToast(null), 3000);
-                    fetchData();
-                  }
-                } catch (err) {
-                  console.error('Confirm failed:', err);
-                }
-                setConfirmLoading(false);
-                setConfirmTarget(null);
-              }}
-            >
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Toast */}
       {toast && (

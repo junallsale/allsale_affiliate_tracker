@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { ExternalLink, MessageSquare, Copy, AlertTriangle } from 'lucide-react';
+import { ExternalLink, MessageSquare, Copy, AlertTriangle, Check } from 'lucide-react';
+import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import { cn } from '@/lib/utils';
 import type { AffiliateCreator, AffiliateCustomColumn } from '@/types/database';
 import type { ColumnDef } from '@/lib/affiliate-columns';
@@ -60,6 +61,8 @@ export function AffiliateTable({
   const [confirmRow, setConfirmRow] = useState<AffiliateCreator | null>(null);
   const [confirmVideos, setConfirmVideos] = useState('');
   const [confirmContract, setConfirmContract] = useState('');
+  const [confirmProducts, setConfirmProducts] = useState<{ id: string; name: string }[]>([]);
+  const [confirmSelectedProducts, setConfirmSelectedProducts] = useState<Set<string>>(new Set());
 
   const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -136,7 +139,7 @@ export function AffiliateTable({
   };
 
   // Handle status change with validation
-  const handleStatusChange = (row: AffiliateCreator, newStatus: string | null) => {
+  const handleStatusChange = async (row: AffiliateCreator, newStatus: string | null) => {
     if (newStatus === 'Confirmed') {
       if (!row.brand_id) {
         onStatusChangeBlocked?.('Please select a brand first');
@@ -146,11 +149,15 @@ export function AffiliateTable({
         onStatusChangeBlocked?.('Please select a project first');
         return;
       }
-      // Show confirmation dialog
+      // Show confirmation dialog + fetch products
       const contractAmt = row.contract_amount || (row.planned_video_count || 0) * (row.price_per_video || 0);
-      setConfirmRow(row);
       setConfirmVideos(String(row.planned_video_count || 1));
       setConfirmContract(String(contractAmt || 0));
+      setConfirmSelectedProducts(new Set());
+      const supabase = createSupabaseBrowser();
+      const { data: prods } = await supabase.from('products').select('id, name').eq('brand_id', row.brand_id!).order('name');
+      setConfirmProducts((prods || []) as { id: string; name: string }[]);
+      setConfirmRow(row);
       return;
     }
     debouncedUpdate(row.id, 'status', newStatus);
@@ -171,6 +178,7 @@ export function AffiliateTable({
           price_per_video: videos > 0 ? contract / videos : 0,
           contract_amount: contract,
           status: 'Confirmed',
+          product_ids: Array.from(confirmSelectedProducts),
         }),
       });
       if (res.ok) {
@@ -433,6 +441,35 @@ export function AffiliateTable({
                 />
               </div>
             </div>
+            {confirmProducts.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm">Assign Products</Label>
+                <div className="border rounded-lg max-h-40 overflow-y-auto">
+                  {confirmProducts.map(p => (
+                    <button
+                      key={p.id}
+                      className={cn(
+                        'w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-muted/50 border-b last:border-0',
+                        confirmSelectedProducts.has(p.id) && 'bg-emerald-50'
+                      )}
+                      onClick={() => setConfirmSelectedProducts(prev => {
+                        const next = new Set(prev);
+                        if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                        return next;
+                      })}
+                    >
+                      <div className={cn(
+                        'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0',
+                        confirmSelectedProducts.has(p.id) ? 'bg-emerald-500 border-emerald-500' : 'border-muted-foreground/30'
+                      )}>
+                        {confirmSelectedProducts.has(p.id) && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         <DialogFooter>
