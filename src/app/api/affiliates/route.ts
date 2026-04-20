@@ -29,6 +29,38 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Enrich with latest campaign_id from pricing_history
+    const handles = (data || []).map((a: { handle: string }) => a.handle).filter(Boolean);
+    if (handles.length > 0) {
+      const { data: cmRows } = await supabase
+        .from("creator_master")
+        .select("id, handle")
+        .in("handle", handles);
+
+      if (cmRows?.length) {
+        const { data: phRows } = await supabase
+          .from("creator_pricing_history")
+          .select("creator_master_id, campaign_id, recorded_at")
+          .in("creator_master_id", cmRows.map((c: { id: string }) => c.id))
+          .not("campaign_id", "is", null)
+          .order("recorded_at", { ascending: false });
+
+        const handleToId = new Map(cmRows.map((c: { handle: string; id: string }) => [c.handle, c.id]));
+        const idToCampaign = new Map<string, number>();
+        for (const ph of phRows || []) {
+          if (!idToCampaign.has(ph.creator_master_id)) {
+            idToCampaign.set(ph.creator_master_id, ph.campaign_id);
+          }
+        }
+
+        for (const a of data || []) {
+          const cmId = handleToId.get(a.handle);
+          (a as Record<string, unknown>).campaign_source = cmId ? idToCampaign.get(cmId) ?? null : null;
+        }
+      }
+    }
+
     return NextResponse.json(data);
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -80,8 +112,9 @@ export async function PATCH(request: NextRequest) {
       await requireAuth();
     }
 
-    // Remove readonly fields
+    // Remove readonly fields and non-DB fields
     delete updates.created_at;
+    delete updates.product_ids;
     updates.updated_at = new Date().toISOString();
 
     // Auto-calculate tier when price_per_video changes
@@ -192,6 +225,27 @@ export async function PATCH(request: NextRequest) {
 
         if (pcError) {
           console.error("Failed to create project_creator:", pcError);
+        }
+
+        // Assign products if provided
+        if (!pcError) {
+          const productIds = body.product_ids as string[] | undefined;
+          if (productIds && productIds.length > 0) {
+            // Get the newly created project_creator id
+            const { data: newPc } = await supabase
+              .from("project_creators")
+              .select("id")
+              .eq("project_id", projectId)
+              .eq("creator_id", creatorId)
+              .single();
+            if (newPc) {
+              const productInserts = productIds.map((pid: string) => ({
+                project_creator_id: newPc.id,
+                product_id: pid,
+              }));
+              await supabase.from("project_creator_products").insert(productInserts);
+            }
+          }
         }
       }
     }
