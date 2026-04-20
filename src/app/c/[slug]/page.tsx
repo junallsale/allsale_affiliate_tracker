@@ -543,18 +543,22 @@ export default function CreatorPublicPage() {
                       <span className="text-muted-foreground">Total Fee</span>
                       <span className="font-medium">${(pcData?.contract_amount || 0).toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        Advance{(pcData?.contract_amount || 0) > 0 ? ` (${Math.round(((pcData?.advance_payment || 0) / pcData.contract_amount) * 100)}%)` : ''}
-                      </span>
-                      <span className="font-medium">${(pcData?.advance_payment || 0).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        Remaining{(pcData?.contract_amount || 0) > 0 ? ` (${Math.round(((pcData?.remaining_payment || 0) / pcData.contract_amount) * 100)}%)` : ''}
-                      </span>
-                      <span className="font-medium">${(pcData?.remaining_payment || 0).toLocaleString()}</span>
-                    </div>
+                    {(pcData?.advance_payment || 0) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Advance{(pcData?.contract_amount || 0) > 0 ? ` (${Math.round(((pcData?.advance_payment || 0) / pcData.contract_amount) * 100)}%)` : ''}
+                        </span>
+                        <span className="font-medium">${(pcData?.advance_payment || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {(pcData?.remaining_payment || 0) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          {(pcData?.advance_payment || 0) === 0 ? 'Payment (after submission)' : `Remaining${(pcData?.contract_amount || 0) > 0 ? ` (${Math.round(((pcData?.remaining_payment || 0) / pcData.contract_amount) * 100)}%)` : ''}`}
+                        </span>
+                        <span className="font-medium">${(pcData?.remaining_payment || 0).toLocaleString()}</span>
+                      </div>
+                    )}
                     {(pcData?.commission_rate || 0) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Commission</span>
@@ -567,8 +571,10 @@ export default function CreatorPublicPage() {
 
                   {/* Payment Terms */}
                   <div className="space-y-1 text-muted-foreground">
-                    <p>• Advance: paid within 3 business days of signing</p>
-                    <p>• Remaining: paid within 3 business days after all video post links are submitted</p>
+                    {(pcData?.advance_payment || 0) > 0 && (
+                      <p>• Advance: paid within 3 business days of signing</p>
+                    )}
+                    <p>• {(pcData?.advance_payment || 0) > 0 ? 'Remaining' : 'Payment'}: paid within 3 business days after all video post links are submitted</p>
                     <p>• Payment via {pcData?.payment_method === 'ach' ? 'ACH (Bank Transfer)' : 'PayPal'}</p>
                     <p>• Creator is responsible for any taxes or fees</p>
                   </div>

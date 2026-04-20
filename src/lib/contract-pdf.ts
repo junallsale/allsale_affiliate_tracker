@@ -114,8 +114,15 @@ export async function generateContractPdf(data: ContractData, contractHash: stri
   addLine('Compensation', 13, 'bold');
   addGap(2);
   addLine(`Total Fee: $${data.contractAmount.toLocaleString()}`);
-  addLine(`Advance Payment: $${data.advancePayment.toLocaleString()} (within 3 business days of signing)`);
-  addLine(`Remaining Payment: $${data.remainingPayment.toLocaleString()} (within 3 business days after content submission)`);
+  if (data.advancePayment > 0) {
+    addLine(`Advance Payment: $${data.advancePayment.toLocaleString()} (within 3 business days of signing)`);
+  }
+  if (data.remainingPayment > 0) {
+    addLine(`Remaining Payment: $${data.remainingPayment.toLocaleString()} (within 3 business days after content submission)`);
+  }
+  if (data.advancePayment === 0 && data.remainingPayment > 0) {
+    addLine('Full payment will be made within 3 business days after content submission.');
+  }
   if (data.commissionRate > 0) {
     addLine(`Commission Rate: ${data.commissionRate}% of GMV`);
   }

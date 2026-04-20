@@ -420,15 +420,19 @@ export default function ProjectDetailPage() {
 
       // Re-activate soft-deleted record
       if (existingPc && existingPc.is_deleted) {
+        const restoreRatio = (project as any).advance_ratio ?? 50;
+        const restoreAmt = newCreatorForm.contract_amount;
+        const restoreAdv = newCreatorForm.advance_payment || Math.round(restoreAmt * restoreRatio / 100 * 100) / 100;
+        const restoreRem = newCreatorForm.remaining_payment || Math.round(restoreAmt * (100 - restoreRatio) / 100 * 100) / 100;
         const { error: restoreError } = await supabase
           .from('project_creators')
           .update({
             is_deleted: false,
             assigned_video_count: newCreatorForm.assigned_video_count,
             content_type: newCreatorForm.content_type,
-            contract_amount: newCreatorForm.contract_amount,
-            advance_payment: newCreatorForm.advance_payment,
-            remaining_payment: newCreatorForm.remaining_payment,
+            contract_amount: restoreAmt,
+            advance_payment: restoreAdv,
+            remaining_payment: restoreRem,
             commission_rate: newCreatorForm.commission_rate,
             contact_point: newCreatorForm.contact_point.trim() || null,
             communication_link: newCreatorForm.communication_link.trim() || null,
@@ -448,6 +452,10 @@ export default function ProjectDetailPage() {
 
       // Create project creator relationship
       const uniqueSlug = generateSlug();
+      const ratio = (project as any).advance_ratio ?? 50;
+      const amt = newCreatorForm.contract_amount;
+      const autoAdvance = newCreatorForm.advance_payment || Math.round(amt * ratio / 100 * 100) / 100;
+      const autoRemaining = newCreatorForm.remaining_payment || Math.round(amt * (100 - ratio) / 100 * 100) / 100;
       const { data: newPc, error: insertError } = await supabase
         .from('project_creators')
         .insert({
@@ -456,9 +464,9 @@ export default function ProjectDetailPage() {
           unique_slug: uniqueSlug,
           assigned_video_count: newCreatorForm.assigned_video_count,
           content_type: newCreatorForm.content_type,
-          contract_amount: newCreatorForm.contract_amount,
-          advance_payment: newCreatorForm.advance_payment,
-          remaining_payment: newCreatorForm.remaining_payment,
+          contract_amount: amt,
+          advance_payment: autoAdvance,
+          remaining_payment: autoRemaining,
           commission_rate: newCreatorForm.commission_rate,
           contact_point: newCreatorForm.contact_point.trim() || null,
           communication_link: newCreatorForm.communication_link.trim() || null,
@@ -557,6 +565,9 @@ export default function ProjectDetailPage() {
             const uniqueSlug = generateSlug();
             const assignedCount = parseInt(row.assigned_video_count || '1', 10) || 1;
             const contractAmt = parseFloat(row.contract_amount || '0') || 0;
+            const csvRatio = (project as any).advance_ratio ?? 50;
+            const csvAdvance = Math.round(contractAmt * csvRatio / 100 * 100) / 100;
+            const csvRemaining = Math.round(contractAmt * (100 - csvRatio) / 100 * 100) / 100;
 
             const contentType = row.content_type?.trim().toLowerCase() === 'live_shopping' ? 'live_shopping' : 'shoppable_video';
 
@@ -569,6 +580,8 @@ export default function ProjectDetailPage() {
                 assigned_video_count: assignedCount,
                 content_type: contentType,
                 contract_amount: contractAmt,
+                advance_payment: csvAdvance,
+                remaining_payment: csvRemaining,
                 contact_point: row.contact_point?.trim() || null,
                 communication_link: row.communication_link?.trim() || null,
                 status: 'pending',
@@ -983,6 +996,23 @@ export default function ProjectDetailPage() {
                 >
                   <FileText className="w-3 h-3 inline mr-1" />
                   {(project as any).require_draft_review ? 'Draft Review: ON' : 'Draft Review: OFF'}
+                </button>
+                {/* Payment split ratio */}
+                <button
+                  className="mt-1 text-xs px-2 py-0.5 rounded-full border bg-violet-50 border-violet-300 text-violet-700"
+                  onClick={async () => {
+                    const input = prompt(
+                      'Enter advance payment ratio (0-100).\nExample: 50 = 50% advance, 50% remaining\n0 = no advance, 100% remaining',
+                      String((project as any).advance_ratio ?? 50)
+                    );
+                    if (input === null) return;
+                    const ratio = Math.max(0, Math.min(100, parseInt(input) || 0));
+                    const { error } = await supabase.from('projects').update({ advance_ratio: ratio }).eq('id', project.id);
+                    if (!error) setProject(prev => prev ? { ...prev, advance_ratio: ratio } as any : prev);
+                  }}
+                >
+                  <DollarSign className="w-3 h-3 inline mr-1" />
+                  Advance {(project as any).advance_ratio ?? 50}% : Remaining {100 - ((project as any).advance_ratio ?? 50)}%
                 </button>
                 {/* Welcome email template override */}
                 <button
