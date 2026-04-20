@@ -68,12 +68,40 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 4. Combine
-    const enriched = drafts.map(d => ({
-      ...d,
-      email_message: d.email_message_id ? (messagesMap[d.email_message_id] || null) : null,
-      project_creator: d.project_creator_id ? (pcMap[d.project_creator_id] || null) : null,
-    }));
+    // 4. Batch lookup: for each thread, find the outbound sender account
+    //    so the UI can default to the same "Send from" account on replies.
+    const threadIds = [...new Set(
+      drafts
+        .map(d => d.gmail_thread_id || (d.email_message_id ? messagesMap[d.email_message_id]?.gmail_thread_id : null))
+        .filter(Boolean)
+    )] as string[];
+    const threadSenderMap: Record<string, string> = {}; // gmail_thread_id → email_account_id
+
+    if (threadIds.length > 0) {
+      const { data: outboundRows } = await supabase
+        .from('email_messages')
+        .select('gmail_thread_id, email_account_id')
+        .in('gmail_thread_id', threadIds)
+        .eq('direction', 'outbound')
+        .not('email_account_id', 'is', null)
+        .order('created_at', { ascending: true }); // first outbound = the original sender
+
+      for (const row of outboundRows || []) {
+        const tid = row.gmail_thread_id as string;
+        if (!threadSenderMap[tid]) threadSenderMap[tid] = row.email_account_id;
+      }
+    }
+
+    // 5. Combine
+    const enriched = drafts.map(d => {
+      const threadId = d.gmail_thread_id || (d.email_message_id ? messagesMap[d.email_message_id]?.gmail_thread_id : null);
+      return {
+        ...d,
+        email_message: d.email_message_id ? (messagesMap[d.email_message_id] || null) : null,
+        project_creator: d.project_creator_id ? (pcMap[d.project_creator_id] || null) : null,
+        thread_sender_account_id: threadId ? (threadSenderMap[threadId] || null) : null,
+      };
+    });
 
     return NextResponse.json(enriched);
   } catch {

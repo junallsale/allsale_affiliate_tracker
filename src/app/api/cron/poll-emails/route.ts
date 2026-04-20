@@ -87,7 +87,20 @@ export async function GET(req: NextRequest) {
         // Skip if it's our own sent email
         if (fromEmail === account.email.toLowerCase()) continue;
 
-        // Match to a project_creator (3 strategies, in priority order)
+        // Match to a project_creator.
+        //
+        // ONLY two strategies are used — both verify the email is a reply to
+        // a conversation we initiated through our system:
+        //
+        //   1. Gmail thread ID → outbound email_messages row
+        //   2. Subject thread-ref marker [#XXXXXXXX] → project_creators.id prefix
+        //
+        // Email-address-only matching (strategies 3-5 in the old code) was removed
+        // because it pulled in unrelated emails sent outside our system and
+        // mis-routed replies from old projects to the newest project_creator.
+        // Emails that don't match either strategy are recorded with
+        // project_creator_id=null and surfaced in the "unmatched" tab of
+        // /admin/email-queue for manual triage.
         let pcMatch: any = null;
         const pcSelect = 'id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))';
 
@@ -126,64 +139,8 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // 3. Match by subject containing brand name — disambiguate when creator has multiple projects
-        if (!pcMatch && email.subject) {
-          const { data: creators } = await supabase
-            .from('creators')
-            .select('id')
-            .ilike('email', fromEmail)
-            .limit(1);
-
-          if (creators?.length) {
-            const { data: pcs } = await supabase
-              .from('project_creators')
-              .select(pcSelect)
-              .eq('creator_id', creators[0].id)
-              .order('created_at', { ascending: false });
-
-            if (pcs && pcs.length > 1) {
-              // Multiple project_creators — try to match brand name in subject
-              const subjectLower = email.subject.toLowerCase();
-              const brandMatch = pcs.find((pc: any) => {
-                const brandName = pc.project?.brand?.name;
-                return brandName && subjectLower.includes(brandName.toLowerCase());
-              });
-              if (brandMatch) pcMatch = brandMatch;
-              else pcMatch = pcs[0]; // fallback to most recent
-            } else if (pcs?.length) {
-              pcMatch = pcs[0];
-            }
-          }
-        }
-
-        // 4. Match by creator email (simple — single project creator)
         if (!pcMatch) {
-          const { data: creators } = await supabase
-            .from('creators')
-            .select('id')
-            .ilike('email', fromEmail)
-            .limit(1);
-
-          if (creators?.length) {
-            const { data: pcs } = await supabase
-              .from('project_creators')
-              .select(pcSelect)
-              .eq('creator_id', creators[0].id)
-              .order('created_at', { ascending: false })
-              .limit(1);
-            if (pcs?.length) pcMatch = pcs[0];
-          }
-        }
-
-        // 3. Match by payment_email
-        if (!pcMatch) {
-          const { data: byPayment } = await supabase
-            .from('project_creators')
-            .select(pcSelect)
-            .ilike('payment_email', fromEmail)
-            .order('created_at', { ascending: false })
-            .limit(1);
-          if (byPayment?.length) pcMatch = byPayment[0];
+          console.log(`[poll] unmatched inbound from ${fromEmail} — subject: ${email.subject?.slice(0, 80)}`);
         }
 
         // Classify the email

@@ -31,6 +31,7 @@ interface EmailDraft {
   status: string;
   created_at: string;
   reviewed_at: string | null;
+  thread_sender_account_id?: string | null;
   email_message: {
     id: string;
     from_email: string;
@@ -49,6 +50,23 @@ interface EmailDraft {
     creator: { name: string; tiktok_handle: string } | null;
     project: { name: string; brand: { name: string } | null } | null;
   } | null;
+}
+
+interface UnmatchedEmail {
+  id: string;
+  from_email: string;
+  to_email: string;
+  subject: string;
+  body_text: string | null;
+  body_html: string | null;
+  received_at: string;
+  gmail_thread_id: string | null;
+  suggestions: Array<{
+    project_creator_id: string;
+    creator_name: string;
+    brand_name: string;
+    project_name: string;
+  }>;
 }
 
 const classificationColors: Record<string, string> = {
@@ -168,6 +186,7 @@ function InlineEditor({ draft, accounts, defaultAccountId, toEmail, threadId, in
 export default function EmailQueuePage() {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
+  const [unmatchedEmails, setUnmatchedEmails] = useState<UnmatchedEmail[]>([]);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('pending');
@@ -194,17 +213,22 @@ export default function EmailQueuePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
-    // Fetch enriched drafts from optimized API (3 queries instead of N*3).
-    // 'reminder' is a virtual filter — API fetches status=pending, client filters by classification.
-    const params = new URLSearchParams();
-    const apiStatus = statusFilter === 'reminder' ? 'pending' : statusFilter;
-    if (apiStatus) params.set('status', apiStatus);
-    params.set('limit', '100');
+    if (statusFilter === 'unmatched') {
+      // Fetch unmatched inbound emails (separate data source)
+      const res = await fetch('/api/emails/unmatched?limit=100');
+      if (res.ok) setUnmatchedEmails(await res.json());
+      setDrafts([]);
+    } else {
+      // Fetch enriched drafts from optimized API.
+      // 'reminder' is a virtual filter — API fetches status=pending, client filters by classification.
+      const params = new URLSearchParams();
+      const apiStatus = statusFilter === 'reminder' ? 'pending' : statusFilter;
+      if (apiStatus) params.set('status', apiStatus);
+      params.set('limit', '100');
 
-    const res = await fetch(`/api/emails/drafts?${params}`);
-    if (res.ok) {
-      const data = await res.json();
-      setDrafts(data as EmailDraft[]);
+      const res = await fetch(`/api/emails/drafts?${params}`);
+      if (res.ok) setDrafts(await res.json());
+      setUnmatchedEmails([]);
     }
 
     // Fetch email accounts
@@ -273,6 +297,11 @@ export default function EmailQueuePage() {
     }
     setEditSubject(subj);
     setEditBody(draft.draft_body_html || '');
+    // Default to the account that originally sent in this thread
+    if (draft.thread_sender_account_id) {
+      const acct = accounts.find(a => a.id === draft.thread_sender_account_id && a.is_active);
+      if (acct) setSendAccountId(acct.id);
+    }
   };
 
   const handleSend = async () => {
@@ -442,7 +471,7 @@ export default function EmailQueuePage() {
             className="h-8 w-56 pl-8 text-sm"
           />
         </div>
-        {['pending', 'reminder', 'sent', 'dismissed', 'escalated', ''].map(s => (
+        {['pending', 'reminder', 'unmatched', 'sent', 'dismissed', 'escalated', ''].map(s => (
           <Button
             key={s || 'all'}
             variant={statusFilter === s ? 'default' : 'outline'}
@@ -453,7 +482,9 @@ export default function EmailQueuePage() {
             {s || 'All'}
           </Button>
         ))}
-        <span className="text-xs text-muted-foreground">{filtered.length} items</span>
+        <span className="text-xs text-muted-foreground">
+          {statusFilter === 'unmatched' ? unmatchedEmails.length : filtered.length} items
+        </span>
         {pollResult && (
           <span className="text-xs text-blue-600 font-medium">{pollResult}</span>
         )}
@@ -479,7 +510,91 @@ export default function EmailQueuePage() {
         </div>
       )}
 
-      {/* Queue Table */}
+      {/* Unmatched Emails Table */}
+      {statusFilter === 'unmatched' ? (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-auto max-h-[calc(100vh-280px)]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[180px]">From</TableHead>
+                    <TableHead className="min-w-[250px]">Subject</TableHead>
+                    <TableHead className="min-w-[200px]">Possible Match</TableHead>
+                    <TableHead>Time</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {unmatchedEmails.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                        No unmatched emails
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    unmatchedEmails.map(e => (
+                      <React.Fragment key={e.id}>
+                        <TableRow
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
+                        >
+                          <TableCell className="text-sm">{e.from_email}</TableCell>
+                          <TableCell>
+                            <div className="text-xs font-medium truncate max-w-[300px]">{e.subject}</div>
+                            <div className="text-xs text-muted-foreground truncate max-w-[300px]">
+                              {(e.body_text || e.body_html?.replace(/<[^>]+>/g, ''))?.slice(0, 100)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {e.suggestions.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {e.suggestions.slice(0, 3).map((s, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs whitespace-nowrap">
+                                    {s.brand_name} / {s.project_name}
+                                  </Badge>
+                                ))}
+                                {e.suggestions.length > 3 && (
+                                  <span className="text-xs text-muted-foreground">+{e.suggestions.length - 3}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">No matching creator</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {new Date(e.received_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </TableCell>
+                        </TableRow>
+                        {expandedId === e.id && (
+                          <TableRow className="bg-muted/30 hover:bg-muted/30">
+                            <TableCell colSpan={4} className="p-4">
+                              <div className="border rounded-lg p-4 bg-background max-h-[300px] overflow-y-auto">
+                                <div className="text-xs text-muted-foreground mb-1">From: {e.from_email} &rarr; {e.to_email}</div>
+                                <div className="text-sm font-medium mb-2">{e.subject}</div>
+                                <div className="text-sm border-t pt-2">
+                                  {e.body_text ? (
+                                    <div className="whitespace-pre-wrap">{e.body_text}</div>
+                                  ) : e.body_html ? (
+                                    <div className="prose prose-sm" dangerouslySetInnerHTML={{ __html: e.body_html }} />
+                                  ) : (
+                                    <span className="text-muted-foreground italic">No content</span>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+
+      /* Queue Table */
       <Card>
         <CardContent className="p-0">
           <div className="overflow-auto max-h-[calc(100vh-280px)]">
@@ -689,7 +804,7 @@ export default function EmailQueuePage() {
                                     <InlineEditor
                                       draft={d}
                                       accounts={accounts}
-                                      defaultAccountId={sendAccountId}
+                                      defaultAccountId={d.thread_sender_account_id || sendAccountId}
                                       toEmail={em?.from_email || ''}
                                       threadId={em?.gmail_thread_id || (d as any).gmail_thread_id}
                                       inReplyTo={em?.message_id_header || (d as any).in_reply_to}
@@ -719,6 +834,7 @@ export default function EmailQueuePage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Send Dialog */}
       <Dialog open={!!sendDraft} onOpenChange={(open) => { if (!open) setSendDraft(null); }}>
