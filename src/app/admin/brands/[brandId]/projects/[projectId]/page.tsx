@@ -46,7 +46,7 @@ interface PCWithDetails {
   contract_sent: boolean;
   payment_email: string | null;
   creator: Creator;
-  videos: { id: string; view_count: number; gmv: number | null }[];
+  videos: { id: string; view_count: number; gmv: number | null; status: string }[];
   payments: { id: string; amount: number }[];
   project_creator_reminds: { id: string; remind_date: string; note: string | null; author_name: string | null; created_at: string }[];
   project_creator_reviews: { id: string; review_date: string; note: string | null; status: string; author_name: string | null; resolve_note: string | null; created_at: string }[];
@@ -178,7 +178,7 @@ export default function ProjectDetailPage() {
       // Fetch project creators with creator, video, and payment details
       const { data: pcData, error: pcError } = await supabase
         .from('project_creators')
-        .select('*, creator:creators(*), videos(id, view_count, gmv), payments(id, amount), project_creator_reminds(id, remind_date, note, author_name, created_at), project_creator_reviews(id, review_date, note, status, author_name, resolve_note, created_at)')
+        .select('*, creator:creators(*), videos(id, view_count, gmv, status), payments(id, amount), project_creator_reminds(id, remind_date, note, author_name, created_at), project_creator_reviews(id, review_date, note, status, author_name, resolve_note, created_at)')
         .eq('project_id', projectId)
         .or('is_deleted.is.null,is_deleted.eq.false')
         .order('created_at', { ascending: false });
@@ -851,7 +851,7 @@ export default function ProjectDetailPage() {
 
   const filteredCreators = projectCreators.filter((pc) => {
     // Status filter based on video progress (not DB status)
-    const uploaded = pc.videos.length;
+    const uploaded = pc.videos.filter(v => v.status !== 'rejected').length;
     const assigned = pc.assigned_video_count;
     if (filter === 'completed' && !(assigned > 0 && uploaded >= assigned)) return false;
     if (filter === 'in-progress' && !(uploaded > 0 && uploaded < assigned)) return false;
@@ -878,7 +878,7 @@ export default function ProjectDetailPage() {
   // Calculate stats
   const totalCreators = projectCreators.length;
   const videosAssigned = projectCreators.reduce((sum, pc) => sum + pc.assigned_video_count, 0);
-  const videosUploaded = projectCreators.reduce((sum, pc) => sum + pc.videos.length, 0);
+  const videosUploaded = projectCreators.reduce((sum, pc) => sum + pc.videos.filter(v => v.status !== 'rejected').length, 0);
   const completionPercent = videosAssigned > 0 ? Math.round((videosUploaded / videosAssigned) * 100) : 0;
   const totalContractAmount = projectCreators.reduce((sum, pc) => sum + (pc.contract_amount || 0), 0);
   const totalPaidAmount = projectCreators.reduce(
@@ -1316,8 +1316,9 @@ export default function ProjectDetailPage() {
                     </TableRow>
                   ) : (
                     filteredCreators.map((pc) => {
-                      const progressPercent = getProgressPercent(pc.videos.length, pc.assigned_video_count);
-                      const creatorStatus = getCreatorStatus(pc.videos.length, pc.assigned_video_count);
+                      const activeVids = pc.videos.filter(v => v.status !== 'rejected').length;
+                      const progressPercent = getProgressPercent(activeVids, pc.assigned_video_count);
+                      const creatorStatus = getCreatorStatus(activeVids, pc.assigned_video_count);
                       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
                       const creatorUrl = `${baseUrl}/c/${pc.unique_slug}`;
                       const paidAmount = (pc.payments || []).reduce((s, p) => s + p.amount, 0);
@@ -1401,7 +1402,7 @@ export default function ProjectDetailPage() {
                               <div className="flex items-center gap-2">
                                 <Progress value={progressPercent} className="w-24" />
                                 <span className="text-xs text-muted-foreground">
-                                  {pc.videos.length}/{pc.assigned_video_count}
+                                  {activeVids}/{pc.assigned_video_count}
                                 </span>
                               </div>
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
