@@ -77,6 +77,7 @@ export const FIXED_COLUMNS: ColumnDef[] = [
   { key: 'advance_payment_date', label: 'Advance Payment', type: 'date', editable: true, width: 120 },
   { key: 'final_payment_date', label: 'Final Payment', type: 'date', editable: true, width: 120 },
   { key: 'recommendation_reason', label: 'Recommendation', type: 'text', editable: true, width: 200 },
+  { key: 'campaign_source', label: 'Campaign Source', type: 'number', editable: false, width: 130 },
 ];
 
 export const DEFAULT_VISIBLE_COLUMNS = [

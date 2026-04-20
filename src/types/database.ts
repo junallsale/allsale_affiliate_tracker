@@ -185,6 +185,7 @@ export interface AffiliateCreator {
   price_per_video: number | null;
   contract_amount: number | null;
   recommendation_reason: string | null;
+  campaign_source: number | null;
   custom_data: Record<string, unknown>;
   created_at: string;
   updated_at: string;
