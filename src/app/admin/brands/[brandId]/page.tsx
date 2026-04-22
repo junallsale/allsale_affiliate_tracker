@@ -84,6 +84,7 @@ export default function BrandDetailPage() {
     thumbnail_url: '',
     content_guide_url: '',
     product_link: '',
+    sample_invitation_url: '',
     is_bundle: false,
     component_ids: [] as string[],
   });
@@ -95,6 +96,7 @@ export default function BrandDetailPage() {
     thumbnail_url: '',
     content_guide_url: '',
     product_link: '',
+    sample_invitation_url: '',
     is_bundle: false,
     component_ids: [] as string[],
   });
@@ -279,6 +281,7 @@ export default function BrandDetailPage() {
           thumbnail_url: productFormData.thumbnail_url || null,
           content_guide_url: productFormData.content_guide_url || null,
           product_link: productFormData.product_link || null,
+          sample_invitation_url: productFormData.sample_invitation_url || null,
           is_bundle: productFormData.is_bundle,
         })
         .select('id')
@@ -306,6 +309,7 @@ export default function BrandDetailPage() {
         thumbnail_url: '',
         content_guide_url: '',
         product_link: '',
+        sample_invitation_url: '',
         is_bundle: false,
         component_ids: [],
       });
@@ -353,6 +357,7 @@ export default function BrandDetailPage() {
       thumbnail_url: product.thumbnail_url || '',
       content_guide_url: product.content_guide_url || '',
       product_link: product.product_link || '',
+      sample_invitation_url: product.sample_invitation_url || '',
       is_bundle: !!product.is_bundle,
       component_ids: bundleComponents[product.id] || [],
     });
@@ -371,6 +376,7 @@ export default function BrandDetailPage() {
           thumbnail_url: editProductFormData.thumbnail_url || null,
           content_guide_url: editProductFormData.content_guide_url || null,
           product_link: editProductFormData.product_link || null,
+          sample_invitation_url: editProductFormData.sample_invitation_url || null,
           is_bundle: editProductFormData.is_bundle,
         })
         .eq('id', editingProduct.id);
@@ -697,6 +703,17 @@ export default function BrandDetailPage() {
                           Product Link
                         </a>
                       )}
+                      {product.sample_invitation_url && (
+                        <a
+                          href={product.sample_invitation_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-emerald-600 hover:underline flex items-center gap-1 mt-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Sample Invitation
+                        </a>
+                      )}
                       {canCreate && (
                         <div className="flex gap-1 mt-3">
                           <Button
@@ -919,6 +936,21 @@ export default function BrandDetailPage() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="edit-product-sample">Sample Invitation URL</Label>
+              <Input
+                id="edit-product-sample"
+                placeholder="https://affiliate-us.tiktok.com/..."
+                value={editProductFormData.sample_invitation_url}
+                onChange={(e) =>
+                  setEditProductFormData({
+                    ...editProductFormData,
+                    sample_invitation_url: e.target.value,
+                  })
+                }
+              />
+            </div>
+
             <div className="space-y-2 border-t pt-4">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -1057,6 +1089,21 @@ export default function BrandDetailPage() {
                   setProductFormData({
                     ...productFormData,
                     product_link: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="product-sample">Sample Invitation URL</Label>
+              <Input
+                id="product-sample"
+                placeholder="https://affiliate-us.tiktok.com/..."
+                value={productFormData.sample_invitation_url}
+                onChange={(e) =>
+                  setProductFormData({
+                    ...productFormData,
+                    sample_invitation_url: e.target.value,
                   })
                 }
               />
