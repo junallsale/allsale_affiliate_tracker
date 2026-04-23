@@ -5,19 +5,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const { project_creator_id, tiktok_url, spark_ad_code } = body;
+    const { project_creator_id, tiktok_url: rawUrl, spark_ad_code } = body;
 
     // Validate required fields
-    if (!project_creator_id || !tiktok_url || !spark_ad_code) {
+    if (!project_creator_id || !rawUrl || !spark_ad_code) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // Extract tiktok_video_id from URL
-    const videoIdMatch = tiktok_url.match(/video\/(\d+)/);
+    // Extract tiktok_video_id and normalize URL (strip query params)
+    const videoIdMatch = rawUrl.match(/video\/(\d+)/);
     const tiktok_video_id = videoIdMatch ? videoIdMatch[1] : null;
+    const tiktok_url = rawUrl.split('?')[0].split('#')[0];
 
     // Create Supabase client (use service role key if available, otherwise anon key)
     const supabaseKey =
@@ -27,6 +28,28 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       supabaseKey
     );
+
+    // Check for duplicate by video ID (prevents parameter-only URL changes)
+    if (tiktok_video_id) {
+      const { data: existingByVideoId } = await supabase
+        .from("videos")
+        .select("id, project_creator_id, status")
+        .eq("tiktok_video_id", tiktok_video_id)
+        .neq("status", "rejected")
+        .maybeSingle();
+
+      if (existingByVideoId) {
+        const isSameCreator = existingByVideoId.project_creator_id === project_creator_id;
+        return NextResponse.json(
+          {
+            error: isSameCreator
+              ? "You have already submitted this TikTok video."
+              : "This TikTok video has already been submitted by another creator.",
+          },
+          { status: 409 }
+        );
+      }
+    }
 
     // Check for duplicate TikTok URL across all videos on the platform
     const { data: existingByUrl } = await supabase
