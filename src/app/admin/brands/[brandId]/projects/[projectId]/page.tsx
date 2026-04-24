@@ -1849,7 +1849,7 @@ export default function ProjectDetailPage() {
 
         {/* Review Dialog */}
         <Dialog open={!!reviewTarget} onOpenChange={(open) => { if (!open) setReviewTarget(null); }}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Review</DialogTitle>
               <DialogDescription>
@@ -1863,11 +1863,12 @@ export default function ProjectDetailPage() {
                     <p className="text-xs font-medium text-muted-foreground">History</p>
                     <div className="border rounded-lg divide-y max-h-40 overflow-y-auto">
                       {[...(reviewTarget.project_creator_reviews || [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).map(rv => (
-                        <div key={rv.id} className="px-3 py-1.5 text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{rv.review_date}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-muted-foreground">{rv.author_name || '-'}</span>
+                        <div key={rv.id} className="px-3 py-2 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-medium shrink-0">{rv.review_date}</span>
+                              <span className="text-muted-foreground shrink-0">{rv.author_name || '-'}</span>
+                            </div>
                               {rv.status === 'need_review' ? (
                                 <div className="flex gap-1">
                                   <button
@@ -1890,9 +1891,8 @@ export default function ProjectDetailPage() {
                                   className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
                                 >Resolved</button>
                               )}
-                            </div>
                           </div>
-                          {rv.note && <p className="text-muted-foreground mt-0.5">{rv.note}</p>}
+                          {rv.note && <p className="text-muted-foreground mt-1 break-words">{rv.note}</p>}
                           {rv.resolve_note && (
                             <p className={cn('mt-0.5', rv.status === 'resolved' ? 'text-emerald-600' : 'text-amber-600')}>
                               {rv.status === 'resolved' ? 'Resolved' : 'Info requested'}: {rv.resolve_note}
