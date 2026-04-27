@@ -185,9 +185,9 @@ async function main() {
   // Step 1: Fetch replied creators from campaign
   console.log("Step 1: Fetching replied creators from campaign...");
   const { rows: replies } = await prodPg.query<ReplyRow>(
-    `SELECT DISTINCT ON (COALESCE(tcu.unique_id, cer.email))
+    `SELECT DISTINCT ON (COALESCE(tcu.unique_id, COALESCE(cer.email, outbound.to_email)))
        tcu.unique_id as handle,
-       cer.email as creator_email,
+       COALESCE(cer.email, outbound.to_email) as creator_email,
        outbound.to_name as creator_name,
        inbound.from_email as reply_email,
        inbound.from_name as reply_name,
@@ -199,14 +199,14 @@ async function main() {
      FROM brand.email_tracking_events ete
      JOIN brand.email_messages outbound ON outbound.id = ete.email_message_id
      JOIN brand.email_messages inbound ON inbound.id = ete.related_email_message_id
-     JOIN brand.campaign_email_recipients cer
+     LEFT JOIN brand.campaign_email_recipients cer
        ON cer.campaign_id = outbound.campaign_id
        AND cer.tiktok_creator_info_id = outbound.tiktok_creator_info_id
      LEFT JOIN brand.tiktok_creator_unique_ids tcu
        ON tcu.tiktok_creator_info_id::text = outbound.tiktok_creator_info_id
      WHERE outbound.campaign_id = $1
      AND ete.event_type = 'REPLIED'
-     ORDER BY COALESCE(tcu.unique_id, cer.email), inbound.received_at DESC`,
+     ORDER BY COALESCE(tcu.unique_id, COALESCE(cer.email, outbound.to_email)), inbound.received_at DESC`,
     [CAMPAIGN_ID]
   );
 

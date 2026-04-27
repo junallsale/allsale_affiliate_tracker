@@ -159,11 +159,22 @@ export default function CreatorsPage() {
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
-      const { data } = await supabase
-        .from('creator_master')
-        .select('*')
-        .order('gmv', { ascending: false, nullsFirst: false });
-      if (data) setCreators(data as CreatorMaster[]);
+      // Supabase default limit is 1000 rows — paginate to fetch all
+      let allRows: CreatorMaster[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data } = await supabase
+          .from('creator_master')
+          .select('*')
+          .order('gmv', { ascending: false, nullsFirst: false })
+          .range(from, from + pageSize - 1);
+        if (!data || data.length === 0) break;
+        allRows = allRows.concat(data as CreatorMaster[]);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      setCreators(allRows);
       const { data: b } = await supabase.from('brands').select('id, name').order('name');
       if (b) setBrands(b as any[]);
       const { data: p } = await supabase.from('projects').select('id, name, brand_id').order('name');
