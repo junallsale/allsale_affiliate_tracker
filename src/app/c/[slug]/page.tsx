@@ -35,6 +35,11 @@ interface PCData {
   contract_notes: string | null;
   payment_email: string | null;
   payment_method: string;
+  ach_account_name: string | null;
+  ach_bank_name: string | null;
+  ach_account_number: string | null;
+  ach_routing_number: string | null;
+  ach_beneficiary_address: string | null;
   status: string;
   legal_name: string | null;
   signature_url: string | null;
@@ -206,6 +211,7 @@ export default function CreatorPublicPage() {
   // Signature state
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [legalName, setLegalName] = useState('');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'paypal' | 'ach'>('paypal');
   const [paymentEmail, setPaymentEmail] = useState('');
   const [achAccountName, setAchAccountName] = useState('');
   const [achBankName, setAchBankName] = useState('');
@@ -251,10 +257,20 @@ export default function CreatorPublicPage() {
 
         setPcData(projectCreator as PCData);
 
+        // Pre-fill payment method (default paypal)
+        const initialMethod = projectCreator.payment_method === 'ach' ? 'ach' : 'paypal';
+        setSelectedPaymentMethod(initialMethod);
+
         // Pre-fill payment email if already set
         if (projectCreator.payment_email) {
           setPaymentEmail(projectCreator.payment_email);
         }
+        // Pre-fill ACH fields if already set
+        if (projectCreator.ach_account_name) setAchAccountName(projectCreator.ach_account_name);
+        if (projectCreator.ach_bank_name) setAchBankName(projectCreator.ach_bank_name);
+        if (projectCreator.ach_account_number) setAchAccountNumber(projectCreator.ach_account_number);
+        if (projectCreator.ach_routing_number) setAchRoutingNumber(projectCreator.ach_routing_number);
+        if (projectCreator.ach_beneficiary_address) setAchBeneficiaryAddress(projectCreator.ach_beneficiary_address);
         // Pre-fill contract email with creator's email
         const creatorEmail = (projectCreator as any).creator?.email || '';
         if (creatorEmail) setContractEmail(creatorEmail);
@@ -299,7 +315,7 @@ export default function CreatorPublicPage() {
       setSignError('Please enter your legal name.');
       return;
     }
-    const isAch = pcData?.payment_method === 'ach';
+    const isAch = selectedPaymentMethod === 'ach';
     const emailToUse = paymentEmail.trim() || pcData?.payment_email || '';
     if (!isAch && (!emailToUse || !/\S+@\S+\.\S+/.test(emailToUse))) {
       setSignError('Please enter a valid payment email.');
@@ -334,7 +350,7 @@ export default function CreatorPublicPage() {
       const formData = new FormData();
       formData.append('project_creator_id', pcData.id);
       formData.append('legal_name', legalName.trim());
-      formData.append('payment_method', pcData.payment_method || 'paypal');
+      formData.append('payment_method', selectedPaymentMethod);
       if (isAch) {
         formData.append('payment_email', '');
         formData.append('ach_account_name', achAccountName.trim());
@@ -379,7 +395,7 @@ export default function CreatorPublicPage() {
     } finally {
       setSignSubmitting(false);
     }
-  }, [legalName, paymentEmail, signatureDataUrl, pcData, shippingName, shippingAddress, shippingPhone, achAccountName, achBankName, achAccountNumber, achRoutingNumber, achBeneficiaryAddress]);
+  }, [legalName, paymentEmail, signatureDataUrl, pcData, shippingName, shippingAddress, shippingPhone, achAccountName, achBankName, achAccountNumber, achRoutingNumber, achBeneficiaryAddress, selectedPaymentMethod, contractEmail]);
 
   // Handle video submission
   const handleSubmitVideo = async (e: React.FormEvent) => {
@@ -583,7 +599,7 @@ export default function CreatorPublicPage() {
                       <p>• Advance: paid within 3 business days of signing</p>
                     )}
                     <p>• {(pcData?.advance_payment || 0) > 0 ? 'Remaining' : 'Payment'}: paid within 3 business days after all video post links are submitted</p>
-                    <p>• Payment via {pcData?.payment_method === 'ach' ? 'ACH (Bank Transfer)' : 'PayPal'}</p>
+                    <p>• Payment via {selectedPaymentMethod === 'ach' ? 'ACH (Bank Transfer)' : 'PayPal'}</p>
                     <p>• Creator is responsible for any taxes or fees</p>
                   </div>
 
@@ -636,8 +652,42 @@ export default function CreatorPublicPage() {
                   />
                 </div>
 
+                {/* Payment Method Selector */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Payment Method <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPaymentMethod('paypal')}
+                      className={`p-3 rounded-md border text-sm font-medium transition-colors ${
+                        selectedPaymentMethod === 'paypal'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-input bg-background text-muted-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      PayPal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPaymentMethod('ach')}
+                      className={`p-3 rounded-md border text-sm font-medium transition-colors ${
+                        selectedPaymentMethod === 'ach'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-input bg-background text-muted-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      ACH (Wire Transfer)
+                    </button>
+                  </div>
+                  <div className="text-xs text-muted-foreground p-2.5 rounded-md bg-amber-50 border border-amber-200">
+                    <p>💡 PayPal charges a transaction fee on incoming payments. To avoid PayPal fees, choose <strong>ACH (Wire Transfer)</strong> instead.</p>
+                  </div>
+                </div>
+
                 {/* Payment Details */}
-                {pcData?.payment_method === 'ach' ? (
+                {selectedPaymentMethod === 'ach' ? (
                   <div className="space-y-3">
                     <Label className="text-sm font-medium">
                       Bank Account Details (ACH) <span className="text-destructive">*</span>
@@ -769,7 +819,7 @@ export default function CreatorPublicPage() {
                 <Button
                   className="w-full"
                   onClick={handleSignatureSubmit}
-                  disabled={signSubmitting || !legalName.trim() || !signatureDataUrl || (pcData?.payment_method === 'ach' ? (!achAccountName.trim() || !achBankName.trim() || !achAccountNumber.trim()) : (!paymentEmail.trim() && !pcData?.payment_email)) || (pcData?.projects?.require_shipping_address && (!shippingName.trim() || !shippingAddress.trim() || !shippingPhone.trim()))}
+                  disabled={signSubmitting || !legalName.trim() || !signatureDataUrl || (selectedPaymentMethod === 'ach' ? (!achAccountName.trim() || !achBankName.trim() || !achAccountNumber.trim()) : (!paymentEmail.trim() && !pcData?.payment_email)) || (pcData?.projects?.require_shipping_address && (!shippingName.trim() || !shippingAddress.trim() || !shippingPhone.trim()))}
                 >
                   {signSubmitting ? (
                     <>
