@@ -532,7 +532,7 @@ export default function CreatorDetailPage() {
           contact_point: contactForm.contact_point.trim() || null,
           communication_link: contactForm.communication_link.trim() || null,
           payment_method: contactForm.payment_method,
-          payment_email: isAch ? null : (contactForm.payment_email.trim() || null),
+          payment_email: contactForm.payment_email.trim() || null,
           ach_account_name: isAch ? (contactForm.ach_account_name.trim() || null) : null,
           ach_bank_name: isAch ? (contactForm.ach_bank_name.trim() || null) : null,
           ach_account_number: isAch ? (contactForm.ach_account_number.trim() || null) : null,
@@ -1033,8 +1033,18 @@ export default function CreatorDetailPage() {
                     />
                   </div>
                 ) : (
-                  <div className="space-y-1 p-3 border rounded-md bg-muted/30">
-                    <p className="text-xs font-medium mb-2">ACH Bank Details</p>
+                  <div className="space-y-3 p-3 border rounded-md bg-muted/30">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Payment Email (for remittance notices)</Label>
+                      <Input
+                        type="email"
+                        placeholder="payment@example.com"
+                        value={contactForm.payment_email}
+                        onChange={(e) => setContactForm(prev => ({ ...prev, payment_email: e.target.value }))}
+                        disabled={savingContact}
+                      />
+                    </div>
+                    <p className="text-xs font-medium">ACH Bank Details</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label className="text-xs">Account Name</Label>
@@ -1115,6 +1125,10 @@ export default function CreatorDetailPage() {
                 </div>
                 {pcData.payment_method === 'ach' ? (
                   <div className="col-span-3 grid grid-cols-4 gap-4 pt-2 border-t">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Payment Email</p>
+                      <p className="text-sm">{pcData.payment_email || <span className="text-muted-foreground">Not set</span>}</p>
+                    </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Account Name</p>
                       <p className="text-sm">{pcData.ach_account_name || <span className="text-muted-foreground">Not set</span>}</p>

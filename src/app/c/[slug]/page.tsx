@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
-import { Loader2, CheckCircle2, Video, Eye, Heart, MessageCircle, Share2, ExternalLink, PenLine, Eraser, X } from 'lucide-react';
+import { Loader2, CheckCircle2, Video, Eye, Heart, MessageCircle, Share2, ExternalLink, PenLine, Eraser, X, FileText } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -44,6 +44,7 @@ interface PCData {
   legal_name: string | null;
   signature_url: string | null;
   signed_at: string | null;
+  contract_pdf_url: string | null;
   projects: {
     id: string;
     name: string;
@@ -235,7 +236,37 @@ export default function CreatorPublicPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // View contract state
+  const [loadingContract, setLoadingContract] = useState(false);
+
   const isSigned = !!(pcData?.signed_at);
+
+  const handleViewContract = useCallback(async () => {
+    if (!pcData) return;
+    if (pcData.contract_pdf_url) {
+      window.open(pcData.contract_pdf_url, '_blank', 'noopener');
+      return;
+    }
+    try {
+      setLoadingContract(true);
+      const res = await fetch('/api/creator/contract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_creator_id: pcData.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load contract');
+      }
+      const { contract_pdf_url } = await res.json();
+      setPcData(prev => (prev ? { ...prev, contract_pdf_url } : prev));
+      window.open(contract_pdf_url, '_blank', 'noopener');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to load contract');
+    } finally {
+      setLoadingContract(false);
+    }
+  }, [pcData]);
 
   // Fetch data
   useEffect(() => {
@@ -317,7 +348,7 @@ export default function CreatorPublicPage() {
     }
     const isAch = selectedPaymentMethod === 'ach';
     const emailToUse = paymentEmail.trim() || pcData?.payment_email || '';
-    if (!isAch && (!emailToUse || !/\S+@\S+\.\S+/.test(emailToUse))) {
+    if (!emailToUse || !/\S+@\S+\.\S+/.test(emailToUse)) {
       setSignError('Please enter a valid payment email.');
       return;
     }
@@ -351,17 +382,15 @@ export default function CreatorPublicPage() {
       formData.append('project_creator_id', pcData.id);
       formData.append('legal_name', legalName.trim());
       formData.append('payment_method', selectedPaymentMethod);
+      formData.append('payment_email', emailToUse);
       if (isAch) {
-        formData.append('payment_email', '');
         formData.append('ach_account_name', achAccountName.trim());
         formData.append('ach_bank_name', achBankName.trim());
         formData.append('ach_account_number', achAccountNumber.trim());
         formData.append('ach_routing_number', achRoutingNumber.trim());
         formData.append('ach_beneficiary_address', achBeneficiaryAddress.trim());
-      } else {
-        formData.append('payment_email', emailToUse);
       }
-      formData.append('contract_email', contractEmail.trim() || (isAch ? '' : emailToUse));
+      formData.append('contract_email', contractEmail.trim() || emailToUse);
       formData.append('signature', blob, 'signature.png');
       if (requireShipping) {
         formData.append('shipping_name', shippingName.trim());
@@ -689,6 +718,21 @@ export default function CreatorPublicPage() {
                 {/* Payment Details */}
                 {selectedPaymentMethod === 'ach' ? (
                   <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="payment-email-ach" className="text-sm font-medium">
+                        Payment Email <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="payment-email-ach"
+                        type="email"
+                        placeholder="your@email.com"
+                        value={paymentEmail}
+                        onChange={(e) => setPaymentEmail(e.target.value)}
+                      />
+                      <div className="text-xs text-muted-foreground p-2.5 rounded-md bg-muted/50">
+                        <p>Remittance details will be sent to this email after each payment.</p>
+                      </div>
+                    </div>
                     <Label className="text-sm font-medium">
                       Bank Account Details (ACH) <span className="text-destructive">*</span>
                     </Label>
@@ -819,7 +863,7 @@ export default function CreatorPublicPage() {
                 <Button
                   className="w-full"
                   onClick={handleSignatureSubmit}
-                  disabled={signSubmitting || !legalName.trim() || !signatureDataUrl || (selectedPaymentMethod === 'ach' ? (!achAccountName.trim() || !achBankName.trim() || !achAccountNumber.trim()) : (!paymentEmail.trim() && !pcData?.payment_email)) || (pcData?.projects?.require_shipping_address && (!shippingName.trim() || !shippingAddress.trim() || !shippingPhone.trim()))}
+                  disabled={signSubmitting || !legalName.trim() || !signatureDataUrl || (!paymentEmail.trim() && !pcData?.payment_email) || (selectedPaymentMethod === 'ach' && (!achAccountName.trim() || !achBankName.trim() || !achAccountNumber.trim())) || (pcData?.projects?.require_shipping_address && (!shippingName.trim() || !shippingAddress.trim() || !shippingPhone.trim()))}
                 >
                   {signSubmitting ? (
                     <>
@@ -868,9 +912,27 @@ export default function CreatorPublicPage() {
               )}
               {/* Signed indicator */}
               {isSigned && (
-                <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 dark:bg-green-950/30 rounded-lg px-3 py-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Signed by <strong>{pcData.legal_name}</strong> on {new Date(pcData.signed_at!).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                <div className="flex items-center justify-between gap-2 text-xs text-green-600 bg-green-50 dark:bg-green-950/30 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span className="truncate">Signed by <strong>{pcData.legal_name}</strong> on {new Date(pcData.signed_at!).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleViewContract}
+                    disabled={loadingContract}
+                    className="h-7 px-2 text-xs shrink-0"
+                  >
+                    {loadingContract ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <>
+                        <FileText className="w-3 h-3 mr-1" />
+                        View Contract
+                      </>
+                    )}
+                  </Button>
                 </div>
               )}
             </div>

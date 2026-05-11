@@ -150,10 +150,6 @@ export default function ChecklistPage() {
   const awaitingVideo = useMemo(
     () => allRows.filter(r => {
       if (!r.signed_at || !r.sample_shipped) return false;
-      // Advance paid check
-      const totalPaid = (r.payments || []).reduce((s, p) => s + p.amount, 0);
-      if (r.advance_payment > 0 && totalPaid < r.advance_payment) return false;
-      // No videos yet
       return (r.videos || []).filter(v => v.status !== 'rejected').length < (r.assigned_video_count || 1);
     }),
     [allRows],

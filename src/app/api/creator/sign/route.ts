@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { generateContractHash, generateContractPdf, type ContractData } from "@/lib/contract-pdf";
-import { sendGmailEmail, getAccessToken, type EmailAttachment } from "@/lib/gmail";
+import { generateAndUploadContractPdf } from "@/lib/contract-service";
+import { sendGmailEmail, type EmailAttachment } from "@/lib/gmail";
 
 export const maxDuration = 60;
 
@@ -31,8 +31,8 @@ export async function POST(request: NextRequest) {
     if (!projectCreatorId || !legalName?.trim() || !file) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-    if (!isAch && !paymentEmail?.trim()) {
-      return NextResponse.json({ error: "Payment email required for PayPal" }, { status: 400 });
+    if (!paymentEmail?.trim()) {
+      return NextResponse.json({ error: "Payment email required" }, { status: 400 });
     }
     if (isAch && (!achAccountName?.trim() || !achBankName?.trim() || !achAccountNumber?.trim())) {
       return NextResponse.json({ error: "Bank details required for ACH" }, { status: 400 });
@@ -72,15 +72,14 @@ export async function POST(request: NextRequest) {
       signature_url: signaturePublicUrl,
       signed_at: signedAt,
     };
+    updateData.payment_email = paymentEmail.trim();
     if (isAch) {
       updateData.ach_account_name = achAccountName?.trim() || null;
       updateData.ach_bank_name = achBankName?.trim() || null;
       updateData.ach_account_number = achAccountNumber?.trim() || null;
       updateData.ach_routing_number = achRoutingNumber?.trim() || null;
       updateData.ach_beneficiary_address = achBeneficiaryAddress?.trim() || null;
-      updateData.payment_email = null;
     } else {
-      updateData.payment_email = paymentEmail.trim();
       updateData.ach_account_name = null;
       updateData.ach_bank_name = null;
       updateData.ach_account_number = null;
@@ -104,18 +103,7 @@ export async function POST(request: NextRequest) {
     try {
       await generateAndSendContract(supabase, projectCreatorId, {
         legalName: legalName.trim(),
-        paymentEmail: isAch ? '' : paymentEmail.trim(),
         contractEmail: resolvedContractEmail,
-        signatureUrl: signaturePublicUrl,
-        signedAt,
-        shippingName: shippingName?.trim(),
-        shippingAddress: shippingAddress?.trim(),
-        paymentMethod: paymentMethod as 'paypal' | 'ach',
-        achAccountName: achAccountName?.trim(),
-        achBankName: achBankName?.trim(),
-        achAccountNumber: achAccountNumber?.trim(),
-        achBeneficiaryAddress: achBeneficiaryAddress?.trim(),
-        achRoutingNumber: achRoutingNumber?.trim(),
       });
     } catch (err) {
       console.error("Contract PDF/email error:", err);
@@ -134,105 +122,22 @@ async function generateAndSendContract(
   projectCreatorId: string,
   params: {
     legalName: string;
-    paymentEmail: string;
     contractEmail: string;
-    signatureUrl: string;
-    signedAt: string;
-    shippingName?: string;
-    shippingAddress?: string;
-    paymentMethod?: 'paypal' | 'ach';
-    achAccountName?: string;
-    achBankName?: string;
-    achAccountNumber?: string;
-    achBeneficiaryAddress?: string;
-    achRoutingNumber?: string;
   }
 ) {
-  // Fetch full project_creator data
-  const { data: pc } = await supabase
-    .from("project_creators")
-    .select(`
-      id, contract_amount, advance_payment, remaining_payment, commission_rate,
-      assigned_video_count, content_type, contract_notes, live_hours,
-      creator:creators(name, tiktok_handle, email),
-      project:projects(name, submission_deadline, require_draft_review, brand:brands(name)),
-      project_creator_products:project_creator_products(product:products(name, content_guide_url))
-    `)
-    .eq("id", projectCreatorId)
-    .single();
-
-  if (!pc) return;
-
-  const creator = pc.creator as any;
-  const project = (pc as any).project as any;
-  const brand = project?.brand as any;
-  const pcProducts = ((pc as any).project_creator_products || []).map((p: any) => p.product).filter(Boolean);
-  const products = pcProducts.map((p: any) => p.name).filter(Boolean);
-  const productGuideUrls = pcProducts
-    .filter((p: any) => p.name && p.content_guide_url)
-    .map((p: any) => ({ name: p.name, url: p.content_guide_url }));
-
-  const contractData: ContractData = {
+  const { pdfBuffer, brandName, creatorHandle } = await generateAndUploadContractPdf(
+    supabase,
     projectCreatorId,
-    legalName: params.legalName,
-    paymentEmail: params.paymentEmail,
-    contractEmail: params.contractEmail,
-    creatorHandle: creator?.tiktok_handle || '',
-    brandName: brand?.name || '',
-    projectName: project?.name || '',
-    contentType: (pc as any).content_type || 'shoppable_video',
-    assignedVideoCount: (pc as any).assigned_video_count || 1,
-    products,
-    contractAmount: pc.contract_amount || 0,
-    advancePayment: pc.advance_payment || 0,
-    remainingPayment: pc.remaining_payment || 0,
-    commissionRate: (pc as any).commission_rate || 0,
-    uploadDeadline: project?.submission_deadline,
-    signedAt: params.signedAt,
-    signatureUrl: params.signatureUrl,
-    shippingName: params.shippingName,
-    shippingAddress: params.shippingAddress,
-    contractNotes: (pc as any).contract_notes || undefined,
-    paymentMethod: params.paymentMethod || 'paypal',
-    achAccountName: params.achAccountName,
-    achBankName: params.achBankName,
-    achAccountNumber: params.achAccountNumber,
-    achBeneficiaryAddress: params.achBeneficiaryAddress,
-    achRoutingNumber: params.achRoutingNumber,
-    liveHours: (pc as any).live_hours || undefined,
-    requireDraftReview: project?.require_draft_review || false,
-    productGuideUrls: (project?.require_draft_review && productGuideUrls.length > 0) ? productGuideUrls : undefined,
-  };
+  );
 
-  // Generate hash
-  const contractHash = generateContractHash(contractData);
-
-  // Generate PDF
-  const pdfBuffer = await generateContractPdf(contractData, contractHash);
-
-  // Upload PDF to storage
-  const pdfFileName = `contracts/${projectCreatorId}_${Date.now()}.pdf`;
-  await supabase.storage
-    .from("invoices")
-    .upload(pdfFileName, pdfBuffer, { contentType: "application/pdf", upsert: true });
-
-  const { data: pdfUrlData } = supabase.storage.from("invoices").getPublicUrl(pdfFileName);
-
-  // Save hash and PDF URL
-  await supabase
-    .from("project_creators")
-    .update({ contract_hash: contractHash, contract_pdf_url: pdfUrlData.publicUrl })
-    .eq("id", projectCreatorId);
-
-  // Send email with PDF attachment
   const { data: emailAccount } = await supabase
     .from("email_accounts")
     .select("email, gmail_refresh_token")
     .eq("email", "rosters@allsale.ai")
     .single();
 
-  if (!emailAccount) {
-    // Fallback: try any active account
+  let senderAccount = emailAccount;
+  if (!senderAccount) {
     const { data: anyAccount } = await supabase
       .from("email_accounts")
       .select("email, gmail_refresh_token")
@@ -240,14 +145,12 @@ async function generateAndSendContract(
       .limit(1)
       .single();
     if (!anyAccount) return;
-    Object.assign(emailAccount || {}, anyAccount);
+    senderAccount = anyAccount;
   }
 
-  const senderAccount = emailAccount!;
   const threadRef = projectCreatorId.slice(0, 8).toUpperCase();
-
   const attachment: EmailAttachment = {
-    filename: `Agreement_${brand?.name || 'ALLSALE'}_${creator?.tiktok_handle || 'creator'}.pdf`,
+    filename: `Agreement_${brandName || 'ALLSALE'}_${creatorHandle || 'creator'}.pdf`,
     mimeType: "application/pdf",
     data: pdfBuffer,
   };
@@ -257,23 +160,22 @@ async function generateAndSendContract(
     from: senderAccount.email,
     to: params.contractEmail,
     cc: "rosters@allsale.ai",
-    subject: `Your Agreement with ${brand?.name || 'ALLSALE'} is Confirmed [#${threadRef}]`,
+    subject: `Your Agreement with ${brandName || 'ALLSALE'} is Confirmed [#${threadRef}]`,
     bodyHtml: `<p>Hi ${params.legalName},</p>
-<p>Thank you for signing the agreement for the <strong>${brand?.name}</strong> campaign!</p>
+<p>Thank you for signing the agreement for the <strong>${brandName}</strong> campaign!</p>
 <p>Please find your signed contract attached as a PDF for your records.</p>
 <p>If you have any questions, feel free to reply to this email.</p>
 <p>Best regards,<br>ALLSALE Team</p>`,
     attachments: [attachment],
   });
 
-  // Record the email
   await supabase.from("email_messages").insert({
     project_creator_id: projectCreatorId,
     direction: "outbound",
     from_email: senderAccount.email,
     to_email: params.contractEmail,
     cc_emails: "rosters@allsale.ai",
-    subject: `Your Agreement with ${brand?.name || 'ALLSALE'} is Confirmed [#${threadRef}]`,
+    subject: `Your Agreement with ${brandName || 'ALLSALE'} is Confirmed [#${threadRef}]`,
     body_html: "Contract confirmation with PDF attachment",
     sent_at: new Date().toISOString(),
   });
