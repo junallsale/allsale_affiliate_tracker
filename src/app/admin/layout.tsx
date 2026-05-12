@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, Users, LogOut, Database, Banknote, Star, X, ClipboardCheck, Calculator, UserCog, Menu, DollarSign, Bell, Check, Mail } from 'lucide-react';
+import { Building2, Users, LogOut, Database, Banknote, Star, X, ClipboardCheck, Calculator, UserCog, Menu, DollarSign, Bell, Check, Mail, Search, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -39,6 +39,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // Checklist badge
   const [checklistBadgeCount, setChecklistBadgeCount] = useState(0);
 
+  // Project creator search
+  type PCSearchResult = {
+    pc_id: string;
+    project_id: string;
+    brand_slug: string;
+    creator_name: string;
+    tiktok_handle: string | null;
+    creator_email: string | null;
+    project_name: string;
+    brand_name: string;
+  };
+  const [pcSearchQuery, setPcSearchQuery] = useState('');
+  const [pcSearchResults, setPcSearchResults] = useState<PCSearchResult[]>([]);
+  const [pcSearchOpen, setPcSearchOpen] = useState(false);
+  const [pcSearching, setPcSearching] = useState(false);
+
   const fetchChecklistBadge = useCallback(async () => {
     const supabase = createSupabaseBrowser();
     // Needs Review: count unique non-deleted project_creators with active reviews
@@ -75,6 +91,58 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (data) setNotifications(data);
   }, []);
 
+  useEffect(() => {
+    const q = pcSearchQuery.trim();
+    if (q.length < 2) {
+      setPcSearchResults([]);
+      setPcSearching(false);
+      return;
+    }
+    setPcSearching(true);
+    const handle = setTimeout(async () => {
+      const supabase = createSupabaseBrowser();
+      const like = `%${q}%`;
+      const { data: creators } = await supabase
+        .from('creators')
+        .select('id, name, tiktok_handle, email')
+        .or(`name.ilike.${like},tiktok_handle.ilike.${like},email.ilike.${like}`)
+        .limit(30);
+      if (!creators || creators.length === 0) {
+        setPcSearchResults([]);
+        setPcSearching(false);
+        return;
+      }
+      const creatorIds = creators.map((c: any) => c.id);
+      const { data: pcs } = await supabase
+        .from('project_creators')
+        .select('id, project_id, creator_id, projects(id, name, brands(name, slug))')
+        .in('creator_id', creatorIds)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .order('created_at', { ascending: false })
+        .limit(40);
+      const creatorMap = new Map(creators.map((c: any) => [c.id, c]));
+      const results: PCSearchResult[] = (pcs || [])
+        .map((pc: any) => {
+          const c = creatorMap.get(pc.creator_id);
+          if (!c || !pc.projects?.brands?.slug) return null;
+          return {
+            pc_id: pc.id,
+            project_id: pc.project_id,
+            brand_slug: pc.projects.brands.slug,
+            creator_name: c.name,
+            tiktok_handle: c.tiktok_handle,
+            creator_email: c.email,
+            project_name: pc.projects.name,
+            brand_name: pc.projects.brands.name,
+          };
+        })
+        .filter(Boolean) as PCSearchResult[];
+      setPcSearchResults(results);
+      setPcSearching(false);
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [pcSearchQuery]);
+
   const markAsRead = async (id: string) => {
     const supabase = createSupabaseBrowser();
     await supabase.from('notifications').update({ is_read: true }).eq('id', id);
@@ -94,6 +162,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // Close sidebar on navigation
   useEffect(() => {
     setSidebarOpen(false);
+    setPcSearchOpen(false);
+    setPcSearchQuery('');
   }, [pathname]);
 
   useEffect(() => {
@@ -279,6 +349,67 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   </p>
                 </button>
               ))
+            )}
+          </div>
+        )}
+
+        {/* Project creator search */}
+        {!isBrandViewer && (
+          <div className="px-3 pt-3 pb-1 relative">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-sidebar-foreground/40" />
+              <input
+                type="text"
+                value={pcSearchQuery}
+                onChange={(e) => { setPcSearchQuery(e.target.value); setPcSearchOpen(true); }}
+                onFocus={() => setPcSearchOpen(true)}
+                placeholder="Search project creator..."
+                className="w-full h-8 pl-8 pr-7 text-xs rounded-md bg-sidebar-accent/40 border border-sidebar-border/60 text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none focus:ring-1 focus:ring-sidebar-ring/60"
+              />
+              {pcSearching ? (
+                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-sidebar-foreground/40 animate-spin" />
+              ) : pcSearchQuery && (
+                <button
+                  onClick={() => { setPcSearchQuery(''); setPcSearchResults([]); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {pcSearchOpen && pcSearchQuery.trim().length >= 2 && (
+              <div className="absolute left-3 right-3 mt-1 z-50 rounded-md border border-sidebar-border bg-background shadow-lg max-h-[320px] overflow-y-auto">
+                {pcSearching && pcSearchResults.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">Searching...</p>
+                ) : pcSearchResults.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">No results</p>
+                ) : (
+                  pcSearchResults.map((r) => (
+                    <button
+                      key={r.pc_id}
+                      onClick={() => {
+                        router.push(`/admin/brands/${r.brand_slug}/projects/${r.project_id}/creators/${r.pc_id}`);
+                        setPcSearchOpen(false);
+                        setPcSearchQuery('');
+                      }}
+                      className="w-full text-left px-3 py-2 border-b last:border-0 hover:bg-muted/50 transition-colors"
+                    >
+                      <p className="text-xs font-medium truncate">
+                        {r.creator_name}
+                        {r.tiktok_handle && (
+                          <span className="text-muted-foreground font-normal ml-1">@{r.tiktok_handle}</span>
+                        )}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                        {r.brand_name} / {r.project_name}
+                      </p>
+                      {r.creator_email && (
+                        <p className="text-[10px] text-muted-foreground/70 truncate">{r.creator_email}</p>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
             )}
           </div>
         )}
