@@ -1665,11 +1665,12 @@ export default function ProjectDetailPage() {
                     value={newCreatorForm.contract_amount || ''}
                     onChange={(e) => {
                       const amount = parseFloat(e.target.value) || 0;
+                      const ratio = (project as any)?.advance_ratio ?? 50;
                       setNewCreatorForm((prev) => ({
                         ...prev,
                         contract_amount: amount,
-                        advance_payment: Math.round(amount * 50) / 100,
-                        remaining_payment: Math.round(amount * 50) / 100,
+                        advance_payment: Math.round(amount * ratio) / 100,
+                        remaining_payment: Math.round(amount * (100 - ratio)) / 100,
                       }));
                     }}
                     disabled={addingCreator}
