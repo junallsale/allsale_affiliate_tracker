@@ -132,6 +132,8 @@ export default function CreatorsPage() {
   const [search, setSearch] = useState('');
   const [tierFilter, setTierFilter] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [gmvMin, setGmvMin] = useState<string>('');
+  const [gmvMax, setGmvMax] = useState<string>('');
   const [sortField, setSortField] = useState<string>('updated_at');
   const [sortAsc, setSortAsc] = useState(false);
   const [page, setPage] = useState(0);
@@ -250,6 +252,14 @@ export default function CreatorsPage() {
         (c.category || '').split(',').map(s => s.trim().toLowerCase()).includes(categoryFilter.toLowerCase())
       );
     }
+    const minVal = gmvMin === '' ? null : Number(gmvMin);
+    const maxVal = gmvMax === '' ? null : Number(gmvMax);
+    if (minVal !== null && !Number.isNaN(minVal)) {
+      result = result.filter(c => Number(c.gmv ?? 0) >= minVal);
+    }
+    if (maxVal !== null && !Number.isNaN(maxVal)) {
+      result = result.filter(c => Number(c.gmv ?? 0) <= maxVal);
+    }
     result.sort((a, b) => {
       const aRaw = (a as any)[sortField];
       const bRaw = (b as any)[sortField];
@@ -263,7 +273,7 @@ export default function CreatorsPage() {
       return sortAsc ? aVal - bVal : bVal - aVal;
     });
     return result;
-  }, [creators, search, tierFilter, categoryFilter, sortField, sortAsc]);
+  }, [creators, search, tierFilter, categoryFilter, gmvMin, gmvMax, sortField, sortAsc]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -361,6 +371,34 @@ export default function CreatorsPage() {
           <option value="">All Categories</option>
           {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">GMV</span>
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="Min"
+            value={gmvMin}
+            onChange={(e) => { setGmvMin(e.target.value); setPage(0); }}
+            className="h-8 w-24 text-sm"
+          />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="Max"
+            value={gmvMax}
+            onChange={(e) => { setGmvMax(e.target.value); setPage(0); }}
+            className="h-8 w-24 text-sm"
+          />
+          {(gmvMin || gmvMax) && (
+            <button
+              onClick={() => { setGmvMin(''); setGmvMax(''); setPage(0); }}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              clear
+            </button>
+          )}
+        </div>
         <span className="text-xs text-muted-foreground">{filtered.length} results</span>
         <span className="text-xs text-muted-foreground italic">Click Tier, Category, or Gender cell to edit inline</span>
       </div>
