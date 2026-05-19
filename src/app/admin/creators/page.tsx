@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import {
@@ -163,6 +163,12 @@ export default function CreatorsPage() {
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Exclude-by-brand filter
+  const [excludeBrandId, setExcludeBrandId] = useState<string>('');
+  const [excludedHandles, setExcludedHandles] = useState<Set<string>>(new Set());
+  const [loadingExclusion, setLoadingExclusion] = useState(false);
+  const excludedHandlesCacheRef = useRef<Map<string, Set<string>>>(new Map());
+
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
@@ -190,6 +196,44 @@ export default function CreatorsPage() {
     }
     fetchData();
   }, [supabase]);
+
+  // Load assigned handles for the excluded brand (lazy + cached)
+  useEffect(() => {
+    if (!excludeBrandId) { setExcludedHandles(new Set()); return; }
+    const cached = excludedHandlesCacheRef.current.get(excludeBrandId);
+    if (cached) { setExcludedHandles(cached); return; }
+    let cancelled = false;
+    (async () => {
+      setLoadingExclusion(true);
+      const set = new Set<string>();
+      // 1) handles in any project of this brand (project_creators ⨝ creators)
+      const { data: projs } = await supabase
+        .from('projects').select('id').eq('brand_id', excludeBrandId);
+      const projectIds = (projs || []).map(p => p.id);
+      if (projectIds.length > 0) {
+        const { data: pcs } = await supabase
+          .from('project_creators')
+          .select('creators(tiktok_handle)')
+          .in('project_id', projectIds);
+        for (const pc of (pcs || []) as any[]) {
+          const h = (pc.creators?.tiktok_handle || '').toLowerCase();
+          if (h) set.add(h);
+        }
+      }
+      // 2) handles in affiliate_creators with this brand_id
+      const { data: affs } = await supabase
+        .from('affiliate_creators').select('handle').eq('brand_id', excludeBrandId);
+      for (const a of (affs || [])) {
+        const h = (a.handle || '').toLowerCase().replace(/^@/, '');
+        if (h) set.add(h);
+      }
+      if (cancelled) return;
+      excludedHandlesCacheRef.current.set(excludeBrandId, set);
+      setExcludedHandles(set);
+      setLoadingExclusion(false);
+    })();
+    return () => { cancelled = true; };
+  }, [excludeBrandId, supabase]);
 
   // Pass the value directly to avoid stale closure issues
   const saveInlineField = useCallback(async (id: string, handle: string, field: 'tier' | 'category' | 'gender' | 'language' | 'race' | 'consistency', rawValue: string) => {
@@ -273,6 +317,9 @@ export default function CreatorsPage() {
     if (priceMaxVal !== null && !Number.isNaN(priceMaxVal)) {
       result = result.filter(c => Number(c.price_per_video ?? 0) <= priceMaxVal);
     }
+    if (excludedHandles.size > 0) {
+      result = result.filter(c => !excludedHandles.has(c.handle.toLowerCase()));
+    }
     result.sort((a, b) => {
       const aRaw = (a as any)[sortField];
       const bRaw = (b as any)[sortField];
@@ -286,7 +333,7 @@ export default function CreatorsPage() {
       return sortAsc ? aVal - bVal : bVal - aVal;
     });
     return result;
-  }, [creators, search, tierFilter, categoryFilter, gmvMin, gmvMax, priceMin, priceMax, sortField, sortAsc]);
+  }, [creators, search, tierFilter, categoryFilter, gmvMin, gmvMax, priceMin, priceMax, excludedHandles, sortField, sortAsc]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -338,7 +385,7 @@ export default function CreatorsPage() {
   const openAssignDialog = (handles: string[]) => {
     if (handles.length === 0) return;
     setAssignHandles(handles);
-    setAssignBrandId('');
+    setAssignBrandId(excludeBrandId || '');
     setAssignProjectId('');
     setAssignResult(null);
     setAssignOpen(true);
@@ -472,6 +519,21 @@ export default function CreatorsPage() {
             >
               clear
             </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Exclude assigned to</span>
+          <select
+            value={excludeBrandId}
+            onChange={(e) => { setExcludeBrandId(e.target.value); setPage(0); }}
+            className="h-8 rounded-md border px-2 text-sm bg-background"
+          >
+            <option value="">— none —</option>
+            {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          {loadingExclusion && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+          {excludeBrandId && !loadingExclusion && (
+            <span className="text-xs text-muted-foreground">({excludedHandles.size} hidden)</span>
           )}
         </div>
         <span className="text-xs text-muted-foreground">{filtered.length} results</span>
@@ -999,6 +1061,12 @@ export default function CreatorsPage() {
                   setAssignResult(parts.join(' · '));
                   if (data.assigned > 0) {
                     clearSelection();
+                    if (assignBrandId) excludedHandlesCacheRef.current.delete(assignBrandId);
+                    if (excludeBrandId && excludeBrandId === assignBrandId) {
+                      const b = assignBrandId;
+                      setExcludeBrandId('');
+                      setTimeout(() => setExcludeBrandId(b), 0);
+                    }
                     setTimeout(() => { setAssignOpen(false); setAssignHandles([]); }, 1200);
                   }
                 } else {
