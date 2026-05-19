@@ -134,6 +134,8 @@ export default function CreatorsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [gmvMin, setGmvMin] = useState<string>('');
   const [gmvMax, setGmvMax] = useState<string>('');
+  const [priceMin, setPriceMin] = useState<string>('');
+  const [priceMax, setPriceMax] = useState<string>('');
   const [sortField, setSortField] = useState<string>('updated_at');
   const [sortAsc, setSortAsc] = useState(false);
   const [page, setPage] = useState(0);
@@ -148,8 +150,8 @@ export default function CreatorsPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [projectHistory, setProjectHistory] = useState<{ project_name: string; brand_name: string; contract_amount: number; signed_at: string | null; videos_count: number }[]>([]);
 
-  // Assign dialog
-  const [assignTarget, setAssignTarget] = useState<CreatorMaster | null>(null);
+  // Assign dialog (supports both single and bulk)
+  const [assignHandles, setAssignHandles] = useState<string[]>([]);
   const [assignOpen, setAssignOpen] = useState(false);
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([]);
   const [allProjectsList, setAllProjectsList] = useState<{ id: string; name: string; brand_id: string }[]>([]);
@@ -157,6 +159,9 @@ export default function CreatorsPage() {
   const [assignProjectId, setAssignProjectId] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<string | null>(null);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function fetchData() {
@@ -260,6 +265,14 @@ export default function CreatorsPage() {
     if (maxVal !== null && !Number.isNaN(maxVal)) {
       result = result.filter(c => Number(c.gmv ?? 0) <= maxVal);
     }
+    const priceMinVal = priceMin === '' ? null : Number(priceMin);
+    const priceMaxVal = priceMax === '' ? null : Number(priceMax);
+    if (priceMinVal !== null && !Number.isNaN(priceMinVal)) {
+      result = result.filter(c => Number(c.price_per_video ?? 0) >= priceMinVal);
+    }
+    if (priceMaxVal !== null && !Number.isNaN(priceMaxVal)) {
+      result = result.filter(c => Number(c.price_per_video ?? 0) <= priceMaxVal);
+    }
     result.sort((a, b) => {
       const aRaw = (a as any)[sortField];
       const bRaw = (b as any)[sortField];
@@ -273,7 +286,7 @@ export default function CreatorsPage() {
       return sortAsc ? aVal - bVal : bVal - aVal;
     });
     return result;
-  }, [creators, search, tierFilter, categoryFilter, gmvMin, gmvMax, sortField, sortAsc]);
+  }, [creators, search, tierFilter, categoryFilter, gmvMin, gmvMax, priceMin, priceMax, sortField, sortAsc]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -295,6 +308,40 @@ export default function CreatorsPage() {
     if (sortField === field) setSortAsc(!sortAsc);
     else { setSortField(field); setSortAsc(false); }
     setPage(0);
+  };
+
+  const visibleIds = useMemo(
+    () => filtered.slice(page * pageSize, (page + 1) * pageSize).map(c => c.id),
+    [filtered, page, pageSize],
+  );
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+  const someVisibleSelected = visibleIds.some(id => selectedIds.has(id)) && !allVisibleSelected;
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAllVisible = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleIds.forEach(id => next.delete(id));
+      else visibleIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+  const selectAllFiltered = () => setSelectedIds(new Set(filtered.map(c => c.id)));
+
+  const openAssignDialog = (handles: string[]) => {
+    if (handles.length === 0) return;
+    setAssignHandles(handles);
+    setAssignBrandId('');
+    setAssignProjectId('');
+    setAssignResult(null);
+    setAssignOpen(true);
   };
 
   const SortIcon = ({ field }: { field: string }) => (
@@ -399,9 +446,72 @@ export default function CreatorsPage() {
             </button>
           )}
         </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Price</span>
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="Min"
+            value={priceMin}
+            onChange={(e) => { setPriceMin(e.target.value); setPage(0); }}
+            className="h-8 w-20 text-sm"
+          />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input
+            type="number"
+            inputMode="numeric"
+            placeholder="Max"
+            value={priceMax}
+            onChange={(e) => { setPriceMax(e.target.value); setPage(0); }}
+            className="h-8 w-20 text-sm"
+          />
+          {(priceMin || priceMax) && (
+            <button
+              onClick={() => { setPriceMin(''); setPriceMax(''); setPage(0); }}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              clear
+            </button>
+          )}
+        </div>
         <span className="text-xs text-muted-foreground">{filtered.length} results</span>
         <span className="text-xs text-muted-foreground italic">Click Tier, Category, or Gender cell to edit inline</span>
       </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-blue-50 px-4 py-2 text-sm">
+          <div className="flex items-center gap-3">
+            <span className="font-medium text-blue-900">{selectedIds.size} selected</span>
+            {selectedIds.size < filtered.length && (
+              <button
+                onClick={selectAllFiltered}
+                className="text-xs text-blue-700 hover:text-blue-900 underline"
+              >
+                Select all {filtered.length} filtered
+              </button>
+            )}
+            <button
+              onClick={clearSelection}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              Clear
+            </button>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              const handles = creators
+                .filter(c => selectedIds.has(c.id))
+                .map(c => c.handle);
+              openAssignDialog(handles);
+            }}
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            Assign {selectedIds.size} to Project
+          </Button>
+        </div>
+      )}
 
       {/* Table */}
       <Card>
@@ -410,7 +520,17 @@ export default function CreatorsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 z-10 bg-muted/80 backdrop-blur-sm min-w-[160px] cursor-pointer" onClick={() => handleSort('handle')}>Handle <SortIcon field="handle" /></TableHead>
+                  <TableHead className="sticky left-0 z-20 bg-muted/80 backdrop-blur-sm w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all on this page"
+                      checked={allVisibleSelected}
+                      ref={el => { if (el) el.indeterminate = someVisibleSelected; }}
+                      onChange={toggleSelectAllVisible}
+                      className="w-4 h-4 cursor-pointer"
+                    />
+                  </TableHead>
+                  <TableHead className="sticky left-10 z-10 bg-muted/80 backdrop-blur-sm min-w-[160px] cursor-pointer" onClick={() => handleSort('handle')}>Handle <SortIcon field="handle" /></TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort('gmv')}>GMV <SortIcon field="gmv" /></TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort('avg_view')}>Avg View <SortIcon field="avg_view" /></TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort('price_per_video')}>Price/Video <SortIcon field="price_per_video" /></TableHead>
@@ -431,21 +551,37 @@ export default function CreatorsPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">No creators found</TableCell>
+                    <TableCell colSpan={17} className="text-center py-8 text-muted-foreground">No creators found</TableCell>
                   </TableRow>
                 ) : (
                   filtered.slice(page * pageSize, (page + 1) * pageSize).map(c => {
                     const tier = tierLabel(c.tier);
                     const isEditingTier = inlineEdit?.id === c.id && inlineEdit.field === 'tier';
                     const isEditingCategory = inlineEdit?.id === c.id && inlineEdit.field === 'category';
+                    const isSelected = selectedIds.has(c.id);
                     return (
                       <TableRow
                         key={c.id}
-                        className="hover:bg-muted/50 cursor-pointer"
+                        className={cn('hover:bg-muted/50 cursor-pointer', isSelected && 'bg-blue-50/60 hover:bg-blue-50/80')}
                         onClick={() => router.push(`/admin/creators/${c.id}`)}
                       >
+                        {/* Selection */}
+                        <TableCell
+                          className={cn('sticky left-0 z-10 w-10', isSelected ? 'bg-blue-50/60' : 'bg-background')}
+                          onClick={(e) => { e.stopPropagation(); toggleSelectOne(c.id); }}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`Select @${c.handle}`}
+                            checked={isSelected}
+                            onChange={() => toggleSelectOne(c.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </TableCell>
+
                         {/* Handle */}
-                        <TableCell className="sticky left-0 z-10 bg-background">
+                        <TableCell className={cn('sticky left-10 z-10', isSelected ? 'bg-blue-50/60' : 'bg-background')}>
                           <div className="flex items-center gap-1">
                             <button
                               onClick={(e) => { e.stopPropagation(); router.push(`/admin/creators/${c.id}`); }}
@@ -691,7 +827,7 @@ export default function CreatorsPage() {
                         {/* Assign */}
                         <TableCell className="text-center">
                           <button
-                            onClick={(e) => { e.stopPropagation(); setAssignTarget(c); setAssignOpen(true); setAssignResult(null); }}
+                            onClick={(e) => { e.stopPropagation(); openAssignDialog([c.handle]); }}
                             className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                           >
                             <Plus className="w-4 h-4" />
@@ -811,13 +947,22 @@ export default function CreatorsPage() {
       </Dialog>
 
       {/* Assign to Project Dialog */}
-      <Dialog open={assignOpen} onOpenChange={(open) => { if (!open) { setAssignOpen(false); setAssignTarget(null); setAssignBrandId(''); setAssignProjectId(''); } }}>
+      <Dialog open={assignOpen} onOpenChange={(open) => { if (!open) { setAssignOpen(false); setAssignHandles([]); setAssignBrandId(''); setAssignProjectId(''); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Assign to Project</DialogTitle>
-            <DialogDescription>@{assignTarget?.handle} → affiliate with status "Rate Received"</DialogDescription>
+            <DialogDescription>
+              {assignHandles.length === 1
+                ? <>@{assignHandles[0]} → affiliate with status &quot;Rate Received&quot;</>
+                : <>{assignHandles.length} creators → affiliates with status &quot;Rate Received&quot;</>}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {assignHandles.length > 1 && (
+              <div className="max-h-24 overflow-y-auto rounded border bg-muted/40 p-2 text-xs font-mono text-muted-foreground">
+                {assignHandles.map(h => `@${h}`).join(', ')}
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Brand</Label>
               <select className="flex h-10 w-full rounded-md border px-3 py-2 text-sm bg-background"
@@ -834,27 +979,36 @@ export default function CreatorsPage() {
                 {allProjectsList.filter(p => p.brand_id === assignBrandId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            {assignResult && <p className={cn('text-sm', assignResult.includes('success') ? 'text-emerald-600' : 'text-amber-600')}>{assignResult}</p>}
+            {assignResult && <p className={cn('text-sm', assignResult.toLowerCase().includes('assigned') && !assignResult.toLowerCase().includes('already') ? 'text-emerald-600' : 'text-amber-600')}>{assignResult}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
             <Button onClick={async () => {
-              if (!assignTarget || !assignBrandId || !assignProjectId) return;
+              if (assignHandles.length === 0 || !assignBrandId || !assignProjectId) return;
               setAssigning(true); setAssignResult(null);
               try {
                 const res = await fetch('/api/affiliates/auto-assign', {
                   method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ handles: [assignTarget.handle], brand_id: assignBrandId, project_id: assignProjectId, status: 'Rate Received' }),
+                  body: JSON.stringify({ handles: assignHandles, brand_id: assignBrandId, project_id: assignProjectId, status: 'Rate Received' }),
                 });
                 const data = await res.json();
-                if (data.assigned > 0) setAssignResult('Assigned successfully');
-                else if (data.skipped_duplicate > 0) setAssignResult('Already assigned to this brand');
-                else setAssignResult(data.error || 'Failed');
+                const parts: string[] = [];
+                if (data.assigned > 0) parts.push(`${data.assigned} assigned`);
+                if (data.skipped_duplicate > 0) parts.push(`${data.skipped_duplicate} already on brand`);
+                if (parts.length > 0) {
+                  setAssignResult(parts.join(' · '));
+                  if (data.assigned > 0) {
+                    clearSelection();
+                    setTimeout(() => { setAssignOpen(false); setAssignHandles([]); }, 1200);
+                  }
+                } else {
+                  setAssignResult(data.error || 'Failed');
+                }
               } catch { setAssignResult('Error'); }
               finally { setAssigning(false); }
-            }} disabled={assigning || !assignBrandId || !assignProjectId}>
+            }} disabled={assigning || !assignBrandId || !assignProjectId || assignHandles.length === 0}>
               {assigning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
-              Assign
+              Assign{assignHandles.length > 1 ? ` ${assignHandles.length}` : ''}
             </Button>
           </DialogFooter>
         </DialogContent>
