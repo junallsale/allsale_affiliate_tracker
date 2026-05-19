@@ -449,7 +449,7 @@ export default function CreatorPublicPage() {
         body: JSON.stringify({
           project_creator_id: pcData?.id,
           tiktok_url: tiktokUrl,
-          spark_ad_code: sparkAdCode,
+          spark_ad_code: sparkAdCode.trim(),
         }),
       });
 
@@ -686,7 +686,7 @@ export default function CreatorPublicPage() {
                   <Label className="text-sm font-medium">
                     Payment Method <span className="text-destructive">*</span>
                   </Label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <button
                       type="button"
                       onClick={() => setSelectedPaymentMethod('paypal')}
@@ -701,7 +701,7 @@ export default function CreatorPublicPage() {
                     <button
                       type="button"
                       onClick={() => setSelectedPaymentMethod('ach')}
-                      className={`p-3 rounded-md border text-sm font-medium transition-colors ${
+                      className={`hidden p-3 rounded-md border text-sm font-medium transition-colors ${
                         selectedPaymentMethod === 'ach'
                           ? 'border-primary bg-primary/5 text-primary'
                           : 'border-input bg-background text-muted-foreground hover:bg-muted/50'
@@ -710,8 +710,9 @@ export default function CreatorPublicPage() {
                       ACH (Wire Transfer)
                     </button>
                   </div>
-                  <div className="text-xs text-muted-foreground p-2.5 rounded-md bg-amber-50 border border-amber-200">
-                    <p>💡 PayPal charges a transaction fee on incoming payments. To avoid PayPal fees, choose <strong>ACH (Wire Transfer)</strong> instead.</p>
+                  <div className="text-xs text-muted-foreground p-2.5 rounded-md bg-amber-50 border border-amber-200 space-y-1.5">
+                    <p>💡 This is a business transaction subject to U.S. tax reporting. By choosing <strong>PayPal</strong>, PayPal issues the required tax forms (1099-K) on your behalf, which is why transaction fees and applicable taxes apply.</p>
+                    <p>If you prefer <strong>ACH (Wire Transfer)</strong>, you must first complete a <strong>W-9 form</strong>. Contact your account manager and they will walk you through the procedure.</p>
                   </div>
                 </div>
 
@@ -1057,13 +1058,13 @@ export default function CreatorPublicPage() {
                   <Input
                     id="spark-code"
                     type="text"
-                    placeholder="e.g., ABC123XYZ"
+                    placeholder="#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx="
                     value={sparkAdCode}
-                    onChange={(e) => setSparkAdCode(e.target.value.toUpperCase())}
+                    onChange={(e) => setSparkAdCode(e.target.value)}
                     disabled={submitting}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Enter the Spark Ad authorization code from TikTok
+                    Paste the Spark Ad authorization code from TikTok exactly as shown (case-sensitive, no spaces).
                   </p>
                 </div>
 
