@@ -205,7 +205,13 @@ export async function PATCH(request: NextRequest) {
         const plannedVideos = updates.planned_video_count ?? current.planned_video_count ?? 1;
         const pricePerVideo = updates.price_per_video ?? current.price_per_video ?? 0;
         const contractAmount = updates.contract_amount ?? current.contract_amount ?? (plannedVideos * pricePerVideo);
-        const advancePayment = Math.floor(contractAmount / 2);
+        const { data: projectRow } = await supabase
+          .from("projects")
+          .select("advance_ratio")
+          .eq("id", projectId)
+          .maybeSingle();
+        const ratio = projectRow?.advance_ratio ?? 0;
+        const advancePayment = Math.floor((contractAmount * ratio) / 100);
         const { error: pcError } = await supabase
           .from("project_creators")
           .insert({

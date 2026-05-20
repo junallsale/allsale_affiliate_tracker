@@ -78,6 +78,7 @@ interface PCFullData {
     id: string;
     name: string;
     brand_id: string;
+    advance_ratio: number | null;
     brands: { id: string; name: string };
   };
 }
@@ -198,7 +199,7 @@ export default function CreatorDetailPage() {
       // Fetch project_creator with relations
       const { data: pc, error: pcError } = await supabase
         .from('project_creators')
-        .select('*, creators(*), projects(id, name, brand_id, brands(id, name))')
+        .select('*, creators(*), projects(id, name, brand_id, advance_ratio, brands(id, name))')
         .eq('id', pcId)
         .single();
 
@@ -381,7 +382,8 @@ export default function CreatorDetailPage() {
     try {
       setSavingContract(true);
       const newAmount = parseFloat(contractInput) || 0;
-      const advance = Math.round(newAmount * 50) / 100;
+      const ratio = pcData?.projects?.advance_ratio ?? 0;
+      const advance = Math.round(newAmount * ratio) / 100;
       const { error } = await supabase
         .from('project_creators')
         .update({ contract_amount: newAmount, advance_payment: advance, remaining_payment: newAmount - advance })

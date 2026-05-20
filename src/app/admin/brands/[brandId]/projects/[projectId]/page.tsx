@@ -420,7 +420,7 @@ export default function ProjectDetailPage() {
 
       // Re-activate soft-deleted record
       if (existingPc && existingPc.is_deleted) {
-        const restoreRatio = (project as any).advance_ratio ?? 50;
+        const restoreRatio = (project as any).advance_ratio ?? 0;
         const restoreAmt = newCreatorForm.contract_amount;
         const restoreAdv = newCreatorForm.advance_payment || Math.round(restoreAmt * restoreRatio / 100 * 100) / 100;
         const restoreRem = newCreatorForm.remaining_payment || Math.round(restoreAmt * (100 - restoreRatio) / 100 * 100) / 100;
@@ -452,7 +452,7 @@ export default function ProjectDetailPage() {
 
       // Create project creator relationship
       const uniqueSlug = generateSlug();
-      const ratio = (project as any).advance_ratio ?? 50;
+      const ratio = (project as any).advance_ratio ?? 0;
       const amt = newCreatorForm.contract_amount;
       const autoAdvance = newCreatorForm.advance_payment || Math.round(amt * ratio / 100 * 100) / 100;
       const autoRemaining = newCreatorForm.remaining_payment || Math.round(amt * (100 - ratio) / 100 * 100) / 100;
@@ -565,7 +565,7 @@ export default function ProjectDetailPage() {
             const uniqueSlug = generateSlug();
             const assignedCount = parseInt(row.assigned_video_count || '1', 10) || 1;
             const contractAmt = parseFloat(row.contract_amount || '0') || 0;
-            const csvRatio = (project as any).advance_ratio ?? 50;
+            const csvRatio = (project as any).advance_ratio ?? 0;
             const csvAdvance = Math.round(contractAmt * csvRatio / 100 * 100) / 100;
             const csvRemaining = Math.round(contractAmt * (100 - csvRatio) / 100 * 100) / 100;
 
@@ -1003,7 +1003,7 @@ export default function ProjectDetailPage() {
                   onClick={async () => {
                     const input = prompt(
                       'Enter advance payment ratio (0-100).\nExample: 50 = 50% advance, 50% remaining\n0 = no advance, 100% remaining',
-                      String((project as any).advance_ratio ?? 50)
+                      String((project as any).advance_ratio ?? 0)
                     );
                     if (input === null) return;
                     const ratio = Math.max(0, Math.min(100, parseInt(input) || 0));
@@ -1012,7 +1012,7 @@ export default function ProjectDetailPage() {
                   }}
                 >
                   <DollarSign className="w-3 h-3 inline mr-1" />
-                  Advance {(project as any).advance_ratio ?? 50}% : Remaining {100 - ((project as any).advance_ratio ?? 50)}%
+                  Advance {(project as any).advance_ratio ?? 0}% : Remaining {100 - ((project as any).advance_ratio ?? 0)}%
                 </button>
                 {/* Welcome email template override */}
                 <button
@@ -1665,7 +1665,7 @@ export default function ProjectDetailPage() {
                     value={newCreatorForm.contract_amount || ''}
                     onChange={(e) => {
                       const amount = parseFloat(e.target.value) || 0;
-                      const ratio = (project as any)?.advance_ratio ?? 50;
+                      const ratio = (project as any)?.advance_ratio ?? 0;
                       setNewCreatorForm((prev) => ({
                         ...prev,
                         contract_amount: amount,

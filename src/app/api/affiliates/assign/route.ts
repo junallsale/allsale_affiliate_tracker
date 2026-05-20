@@ -29,6 +29,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Affiliate creators not found" }, { status: 404 });
     }
 
+    const { data: projectRow } = await supabase
+      .from("projects")
+      .select("advance_ratio")
+      .eq("id", project_id)
+      .maybeSingle();
+    const advanceRatio = projectRow?.advance_ratio ?? 0;
+
     const results = [];
 
     for (const aff of affiliates) {
@@ -73,6 +80,7 @@ export async function POST(request: NextRequest) {
       }
 
       const contractAmount = (aff.planned_video_count || 0) * (aff.price_per_video || 0);
+      const advancePayment = Math.floor((contractAmount * advanceRatio) / 100);
       const { error: pcError } = await supabase
         .from("project_creators")
         .insert({
@@ -81,8 +89,8 @@ export async function POST(request: NextRequest) {
           unique_slug: generateSlug(),
           assigned_video_count: aff.planned_video_count || 0,
           contract_amount: contractAmount,
-          advance_payment: Math.floor(contractAmount / 2),
-          remaining_payment: contractAmount - Math.floor(contractAmount / 2),
+          advance_payment: advancePayment,
+          remaining_payment: contractAmount - advancePayment,
           commission_rate: aff.live_commission || 20,
           communication_link: aff.thread || null,
           status: "pending",

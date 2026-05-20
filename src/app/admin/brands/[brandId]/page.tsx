@@ -213,6 +213,7 @@ export default function BrandDetailPage() {
         end_date: projectFormData.end_date || null,
         submission_deadline: projectFormData.submission_deadline || null,
         budget: projectFormData.budget ? parseFloat(projectFormData.budget) : 0,
+        advance_ratio: 0,
         status: 'active',
       });
 
