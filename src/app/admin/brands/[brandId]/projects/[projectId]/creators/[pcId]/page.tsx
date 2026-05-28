@@ -384,9 +384,21 @@ export default function CreatorDetailPage() {
       const newAmount = parseFloat(contractInput) || 0;
       const ratio = pcData?.projects?.advance_ratio ?? 0;
       const advance = Math.round(newAmount * ratio) / 100;
+      const oldAmount = Number(pcData?.contract_amount) || 0;
+      const updates: Record<string, unknown> = {
+        contract_amount: newAmount,
+        advance_payment: advance,
+        remaining_payment: newAmount - advance,
+      };
+      // Revert auto-sign: a $0 contract is auto-signed (signed_at set, no real signature).
+      // If the amount becomes > 0, that auto-sign is no longer valid — mark unsigned.
+      if (oldAmount === 0 && newAmount > 0 && pcData?.signed_at && !pcData?.signature_url) {
+        updates.signed_at = null;
+        updates.contract_sent = false;
+      }
       const { error } = await supabase
         .from('project_creators')
-        .update({ contract_amount: newAmount, advance_payment: advance, remaining_payment: newAmount - advance })
+        .update(updates)
         .eq('id', pcId);
 
       if (error) throw error;

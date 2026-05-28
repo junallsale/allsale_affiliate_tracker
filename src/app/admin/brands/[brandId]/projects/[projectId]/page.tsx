@@ -4,7 +4,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send, FileText, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, Plus, Copy, Check, Loader2, Upload, Download, Video, Users, Target, TrendingUp, DollarSign, Wallet, Package, PenLine, Star, Search, Bell, X, RefreshCw, Mail, ExternalLink, Trash2, Link2, Send, FileText, ClipboardCheck, RotateCcw } from 'lucide-react';
 import Papa from 'papaparse';
 
 const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
@@ -61,6 +61,9 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [projectCreators, setProjectCreators] = useState<PCWithDetails[]>([]);
+  const [deletedCreators, setDeletedCreators] = useState<PCWithDetails[]>([]);
+  const [deletedDialogOpen, setDeletedDialogOpen] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('all');
   const [search, setSearch] = useState('');
@@ -186,6 +189,15 @@ export default function ProjectDetailPage() {
       if (pcError) throw pcError;
       setProjectCreators((pcData || []) as PCWithDetails[]);
 
+      // Fetch soft-deleted creators (for the restore dialog)
+      const { data: deletedData } = await supabase
+        .from('project_creators')
+        .select('*, creator:creators(*), videos(id, view_count, gmv, status), payments(id, amount), project_creator_reminds(id, remind_date, note, author_name, created_at), project_creator_reviews(id, review_date, note, status, author_name, resolve_note, created_at)')
+        .eq('project_id', projectId)
+        .eq('is_deleted', true)
+        .order('created_at', { ascending: false });
+      setDeletedCreators((deletedData || []) as PCWithDetails[]);
+
       // Fetch brand products for assignment
       if (projectData) {
         const { data: productsData } = await supabase
@@ -223,6 +235,22 @@ export default function ProjectDetailPage() {
       console.error('Error fetching project data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRestoreCreator = async (pcId: string) => {
+    setRestoringId(pcId);
+    try {
+      const { error } = await supabase
+        .from('project_creators')
+        .update({ is_deleted: false })
+        .eq('id', pcId);
+      if (error) throw error;
+      await fetchProjectData();
+    } catch (error) {
+      console.error('Error restoring creator:', error);
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -1285,6 +1313,17 @@ export default function ProjectDetailPage() {
                         : 'Not Started'}
                 </Button>
               ))}
+              {canManageCreators && deletedCreators.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => setDeletedDialogOpen(true)}
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Deleted ({deletedCreators.length})
+                </Button>
+              )}
             </div>
 
             {/* Creators Table */}
@@ -2344,6 +2383,47 @@ export default function ProjectDetailPage() {
                   </Button>
                 </DialogFooter>
               </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Deleted Creators Dialog */}
+        <Dialog open={deletedDialogOpen} onOpenChange={setDeletedDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5" /> Deleted Creators
+              </DialogTitle>
+              <DialogDescription>
+                Soft-deleted creators in this project. Restore brings them back with their existing contract data.
+              </DialogDescription>
+            </DialogHeader>
+            {deletedCreators.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No deleted creators.</p>
+            ) : (
+              <div className="max-h-[60vh] overflow-y-auto divide-y">
+                {deletedCreators.map((pc) => (
+                  <div key={pc.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium font-mono truncate">@{pc.creator?.tiktok_handle || pc.creator?.name || '-'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pc.content_type || 'video'} · ${Math.round(Number(pc.contract_amount) || 0).toLocaleString()} · {pc.assigned_video_count || 0} videos
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={restoringId === pc.id}
+                      onClick={() => handleRestoreCreator(pc.id)}
+                    >
+                      {restoringId === pc.id
+                        ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                        : <RotateCcw className="w-4 h-4 mr-1.5" />}
+                      Restore
+                    </Button>
+                  </div>
+                ))}
+              </div>
             )}
           </DialogContent>
         </Dialog>
