@@ -226,3 +226,57 @@ export interface AffiliateComment {
   content: string;
   created_at: string;
 }
+
+export type FinanceInvoiceStatus = 'finalized' | 'superseded' | 'void';
+
+export interface FinanceInvoice {
+  id: string;
+  brand_id: string;
+  period_year: number;
+  period_month: number;
+  status: FinanceInvoiceStatus;
+  finalized_at: string;
+  finalized_by: string | null;
+  snapshot_total_amount: number;
+  snapshot_creator_count: number;
+  notes: string | null;
+  superseded_by: string | null;
+  created_at: string;
+}
+
+export type FinanceRefundStatus = 'none' | 'pending' | 'refunded' | 'waived';
+
+export interface FinanceInvoiceLine {
+  id: string;
+  invoice_id: string;
+  project_creator_id: string;
+  project_id: string;
+  creator_id: string;
+  contract_amount: number;
+  assigned_video_count: number | null;
+  signed_at: string | null;
+  snapshot: {
+    creator_name?: string;
+    tiktok_handle?: string;
+    project_name?: string;
+    finalized_at?: string;
+  };
+  refund_status: FinanceRefundStatus;
+  refund_amount: number | null;
+  refund_note: string | null;
+  refund_updated_at: string | null;
+  refund_updated_by: string | null;
+}
+
+export type AssignResultStatus = 'assigned' | 'already_assigned' | 'deleted_in_project' | 'reactivated';
+
+export interface AssignResultRow {
+  handle: string;
+  affiliate_creator_id: string;
+  status?: AssignResultStatus;
+  error?: string;
+}
+
+export interface AssignResult {
+  results: AssignResultRow[];
+}

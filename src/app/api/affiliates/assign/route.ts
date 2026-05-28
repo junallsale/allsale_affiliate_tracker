@@ -9,12 +9,33 @@ async function requireAuthClient() {
   return supabase;
 }
 
+function buildContractFields(aff: {
+  planned_video_count?: number | null;
+  price_per_video?: number | null;
+  live_commission?: number | null;
+  thread?: string | null;
+}, advanceRatio: number) {
+  const contractAmount = (aff.planned_video_count || 0) * (aff.price_per_video || 0);
+  const advancePayment = Math.floor((contractAmount * advanceRatio) / 100);
+  return {
+    assigned_video_count: aff.planned_video_count || 0,
+    contract_amount: contractAmount,
+    advance_payment: advancePayment,
+    remaining_payment: contractAmount - advancePayment,
+    commission_rate: aff.live_commission || 20,
+    communication_link: aff.thread || null,
+    status: "pending" as const,
+    ...(contractAmount === 0 ? { contract_sent: true, signed_at: new Date().toISOString() } : {}),
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await requireAuthClient();
     const body = await request.json();
 
-    const { affiliate_creator_ids, project_id } = body;
+    const { affiliate_creator_ids, project_id, reactivate_ids = [] } = body;
+    const reactivateSet = new Set<string>(reactivate_ids);
 
     if (!affiliate_creator_ids?.length || !project_id) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -61,7 +82,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (createError || !newCreator) {
-          results.push({ handle: aff.handle, error: "Failed to create creator" });
+          results.push({ handle: aff.handle, affiliate_creator_id: aff.id, error: "Failed to create creator" });
           continue;
         }
         creatorId = newCreator.id;
@@ -69,38 +90,44 @@ export async function POST(request: NextRequest) {
 
       const { data: existingPc } = await supabase
         .from("project_creators")
-        .select("id")
+        .select("id, is_deleted")
         .eq("project_id", project_id)
         .eq("creator_id", creatorId)
         .maybeSingle();
 
-      if (existingPc) {
-        results.push({ handle: aff.handle, status: "already_assigned" });
+      if (existingPc && !existingPc.is_deleted) {
+        results.push({ handle: aff.handle, affiliate_creator_id: aff.id, status: "already_assigned" });
         continue;
       }
 
-      const contractAmount = (aff.planned_video_count || 0) * (aff.price_per_video || 0);
-      const advancePayment = Math.floor((contractAmount * advanceRatio) / 100);
+      if (existingPc && existingPc.is_deleted) {
+        if (!reactivateSet.has(aff.id)) {
+          results.push({ handle: aff.handle, affiliate_creator_id: aff.id, status: "deleted_in_project" });
+          continue;
+        }
+        const { error: reError } = await supabase
+          .from("project_creators")
+          .update({ is_deleted: false, ...buildContractFields(aff, advanceRatio) })
+          .eq("id", existingPc.id);
+        results.push(reError
+          ? { handle: aff.handle, affiliate_creator_id: aff.id, error: reError.message }
+          : { handle: aff.handle, affiliate_creator_id: aff.id, status: "reactivated" });
+        continue;
+      }
+
       const { error: pcError } = await supabase
         .from("project_creators")
         .insert({
           project_id,
           creator_id: creatorId,
           unique_slug: generateSlug(),
-          assigned_video_count: aff.planned_video_count || 0,
-          contract_amount: contractAmount,
-          advance_payment: advancePayment,
-          remaining_payment: contractAmount - advancePayment,
-          commission_rate: aff.live_commission || 20,
-          communication_link: aff.thread || null,
-          status: "pending",
-          ...(contractAmount === 0 ? { contract_sent: true, signed_at: new Date().toISOString() } : {}),
+          ...buildContractFields(aff, advanceRatio),
         });
 
       if (pcError) {
-        results.push({ handle: aff.handle, error: pcError.message });
+        results.push({ handle: aff.handle, affiliate_creator_id: aff.id, error: pcError.message });
       } else {
-        results.push({ handle: aff.handle, status: "assigned" });
+        results.push({ handle: aff.handle, affiliate_creator_id: aff.id, status: "assigned" });
       }
     }
 

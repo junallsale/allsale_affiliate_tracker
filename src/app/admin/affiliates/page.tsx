@@ -15,7 +15,7 @@ import AssignToProjectDialog from '@/components/affiliate-table/AssignToProjectD
 import { CustomColumnDialog } from '@/components/affiliate-table/CustomColumnDialog';
 import CommentsSidebar from '@/components/affiliate-table/CommentsSidebar';
 import { FIXED_COLUMNS, DEFAULT_VISIBLE_COLUMNS } from '@/lib/affiliate-columns';
-import type { AffiliateCreator, AffiliateView, AffiliateCustomColumn, ViewFilter } from '@/types/database';
+import type { AffiliateCreator, AffiliateView, AffiliateCustomColumn, ViewFilter, AssignResult } from '@/types/database';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import { useUserRole } from '@/hooks/useUserRole';
 
@@ -277,27 +277,30 @@ export default function AffiliatesPage() {
     setAddOpen(false);
   }, []);
 
-  const handleAssign = useCallback(async (projectId: string) => {
+  const handleAssign = useCallback(async (projectId: string, reactivateIds: string[] = []): Promise<AssignResult | null> => {
     try {
       const res = await fetch('/api/affiliates/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          affiliate_creator_ids: Array.from(selectedIds),
+          affiliate_creator_ids: reactivateIds.length ? reactivateIds : Array.from(selectedIds),
           project_id: projectId,
+          reactivate_ids: reactivateIds,
         }),
       });
-      if (res.ok) {
-        const result = await res.json();
-        const assigned = result.results.filter((r: { status: string }) => r.status === 'assigned').length;
-        alert(`${assigned} creator(s) assigned to project!`);
-        setSelectedIds(new Set());
-      }
+      if (!res.ok) return null;
+      return (await res.json()) as AssignResult;
     } catch (err) {
       console.error('Assign error:', err);
+      return null;
     }
-    setAssignOpen(false);
   }, [selectedIds]);
+
+  const handleAssignDone = useCallback(() => {
+    setSelectedIds(new Set());
+    setAssignOpen(false);
+    fetchData();
+  }, [fetchData]);
 
   const handleDeleteSelected = useCallback(async () => {
     if (!confirm(`Delete ${selectedIds.size} creator(s)?`)) return;
@@ -631,6 +634,7 @@ export default function AffiliatesPage() {
         onOpenChange={setAssignOpen}
         selectedCount={selectedIds.size}
         onAssign={handleAssign}
+        onDone={handleAssignDone}
       />
       <CustomColumnDialog open={customColOpen} onOpenChange={setCustomColOpen} onAdd={handleAddCustomColumn} />
 
