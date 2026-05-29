@@ -33,3 +33,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# customer data / PII — never commit (security audit 2026-05)
+/data/
+*.csv
+*.xlsx
+.~lock.*#
+
+# scaffolding artifact
+FILES_CREATED.md

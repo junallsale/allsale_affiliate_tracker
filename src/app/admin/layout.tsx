@@ -4,21 +4,29 @@ import { Building2, Users, LogOut, Database, Banknote, Star, X, ClipboardCheck, 
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
-import { useUserRole } from '@/hooks/useUserRole';
+import type { UserRole } from '@/hooks/useUserRole';
 import { useFavoriteProjects } from '@/hooks/useFavoriteProjects';
 
-const adminNavLinks = [
-  { label: 'Affiliates', href: '/admin/affiliates', icon: Database },
-  { label: 'Brands', href: '/admin/brands', icon: Building2 },
-  { label: 'Creators', href: '/admin/creators', icon: Users },
-  { label: 'Checklist', href: '/admin/checklist', icon: ClipboardCheck },
-  { label: 'Pricing', href: '/admin/pricing', icon: Calculator },
-  { label: 'Email Queue', href: '/admin/email-queue', icon: Mail },
+type NavLink = { label: string; href: string; icon: typeof Database; roles: UserRole[] };
+
+const adminNavLinks: NavLink[] = [
+  { label: 'Affiliates', href: '/admin/affiliates', icon: Database, roles: ['super_admin', 'operator'] },
+  { label: 'Brands', href: '/admin/brands', icon: Building2, roles: ['super_admin', 'operator'] },
+  { label: 'Creators', href: '/admin/creators', icon: Users, roles: ['super_admin', 'operator'] },
+  { label: 'Checklist', href: '/admin/checklist', icon: ClipboardCheck, roles: ['super_admin', 'operator'] },
+  { label: 'Pricing', href: '/admin/pricing', icon: Calculator, roles: ['super_admin', 'operator'] },
+  { label: 'Email Queue', href: '/admin/email-queue', icon: Mail, roles: ['super_admin', 'operator'] },
+];
+
+const adminOnlyNavLinks: NavLink[] = [
+  { label: 'Payments', href: '/admin/payments', icon: Banknote, roles: ['super_admin'] },
+  { label: 'Finance', href: '/admin/finance', icon: DollarSign, roles: ['super_admin'] },
+  { label: 'Users', href: '/admin/users', icon: UserCog, roles: ['super_admin'] },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -27,7 +35,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const { isBrandViewer, isAdmin, assignedBrandSlugs } = useUserRole();
+  // Role is resolved from the DB (admin_users), not from cookies, so a missing
+  // or stale cookie can never expose menus the user isn't allowed to see.
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [assignedBrandSlugs, setAssignedBrandSlugs] = useState<string[]>([]);
+  const isBrandViewer = role === 'brand_viewer';
+  const isAdmin = role === 'super_admin';
+  const [deniedMsg, setDeniedMsg] = useState<string | null>(null);
   const { favorites, toggleFavorite } = useFavoriteProjects();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -166,6 +180,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setPcSearchQuery('');
   }, [pathname]);
 
+  // Auto-dismiss the permission-denied toast
+  useEffect(() => {
+    if (!deniedMsg) return;
+    const t = setTimeout(() => setDeniedMsg(null), 4000);
+    return () => clearTimeout(t);
+  }, [deniedMsg]);
+
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createSupabaseBrowser();
@@ -174,6 +195,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (session?.user) {
         setIsAuthenticated(true);
         setUserEmail(session.user.email || '');
+
+        // Resolve role + assigned brands directly from the DB
+        const { data: adminUser } = await supabase
+          .from('admin_users')
+          .select('id, role')
+          .eq('auth_id', session.user.id)
+          .single();
+        const resolvedRole = (adminUser?.role || 'operator') as UserRole;
+        setRole(resolvedRole);
+
+        if (resolvedRole === 'brand_viewer' || resolvedRole === 'brand_manager') {
+          const { data: assignments } = await supabase
+            .from('brand_manager_assignments')
+            .select('brands(slug)')
+            .eq('admin_user_id', adminUser!.id);
+          const slugs = (assignments || [])
+            .map((a: Record<string, unknown>) => (a.brands as { slug: string } | null)?.slug)
+            .filter((s): s is string => Boolean(s));
+          setAssignedBrandSlugs(slugs);
+        } else {
+          setAssignedBrandSlugs([]);
+        }
+
         fetchNotifications();
         fetchChecklistBadge();
       } else if (!isLoginPage) {
@@ -217,8 +261,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return <>{children}</>;
   }
 
-  // Not authenticated and not login page: show nothing while redirecting
-  if (!authChecked || !isAuthenticated) {
+  // Not authenticated, or role not yet resolved: show nothing while loading.
+  // Waiting for `role` prevents a flash of admin menus before the DB confirms
+  // the user's actual permissions.
+  if (!authChecked || !isAuthenticated || role === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/30">
         <div className="animate-pulse text-muted-foreground">로딩 중...</div>
@@ -227,20 +273,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   // Build nav links based on role
-  const navLinks = isBrandViewer
+  const navLinks: NavLink[] = isBrandViewer
     ? assignedBrandSlugs.map(slug => ({
         label: 'Dashboard',
         href: `/admin/brands/${slug}`,
         icon: Building2,
+        roles: ['brand_viewer'] as UserRole[],
       }))
-    : [
-        ...adminNavLinks,
-        ...(isAdmin ? [
-          { label: 'Payments', href: '/admin/payments', icon: Banknote },
-          { label: 'Finance', href: '/admin/finance', icon: DollarSign },
-          { label: 'Users', href: '/admin/users', icon: UserCog },
-        ] : []),
-      ];
+    : [...adminNavLinks, ...adminOnlyNavLinks].filter(link => link.roles.includes(role));
 
   // Brand viewer: no sidebar, just content + top-right logout button
   if (isBrandViewer) {
@@ -265,6 +305,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex min-h-screen">
+      {/* Permission-denied toast */}
+      {deniedMsg && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm text-white shadow-lg">
+          <X className="h-4 w-4 shrink-0" />
+          <span>{deniedMsg}</span>
+        </div>
+      )}
+
       {/* Mobile hamburger */}
       <div className="fixed top-0 left-0 z-[60] p-3 md:hidden">
         <Button
@@ -419,15 +467,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             const Icon = link.icon;
             const isActive = pathname.startsWith(link.href);
             const badgeCount = link.href === '/admin/checklist' ? checklistBadgeCount : 0;
+            const allowed = link.roles.includes(role);
             return (
               <Link
                 key={link.href}
                 href={link.href}
+                onClick={(e) => {
+                  if (!allowed) {
+                    e.preventDefault();
+                    setDeniedMsg(`You don't have permission to access "${link.label}".`);
+                  }
+                }}
+                aria-disabled={!allowed}
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
                   isActive
                     ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                  !allowed && 'opacity-50 cursor-not-allowed'
                 )}
               >
                 <Icon className="h-4 w-4" />
