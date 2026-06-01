@@ -12,6 +12,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
+import { isDemoBrandId } from '@/lib/demo';
 
 interface PCRow {
   contract_amount: number;
@@ -51,7 +52,9 @@ export default function FinancePage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        setAllData(data as unknown as PCRow[]);
+        const rows = (data as unknown as PCRow[])
+          .filter((row) => !isDemoBrandId(row.projects?.brand_id));
+        setAllData(rows);
       }
       setLoading(false);
     }

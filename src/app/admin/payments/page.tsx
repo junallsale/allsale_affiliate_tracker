@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import { useUserRole } from '@/hooks/useUserRole';
+import { isDemoBrandId } from '@/lib/demo';
 
 interface PaymentCreatorRow {
   id: string;
@@ -120,7 +121,8 @@ export default function PaymentsPage() {
 
       if (error) throw error;
 
-      const allRows = data as unknown as PaymentCreatorRow[];
+      const allRows = (data as unknown as PaymentCreatorRow[])
+        .filter((row) => !isDemoBrandId(row.projects?.brand_id));
       const combined: PaymentRowWithType[] = [];
 
       // Advance: advance_payment > 0 AND total paid < advance_payment

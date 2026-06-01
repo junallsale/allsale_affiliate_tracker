@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
+import { isDemoBrandId } from '@/lib/demo';
 
 const RichTextEditor = lazy(() => import('@/components/ui/RichTextEditor'));
 import {
@@ -48,7 +49,7 @@ interface EmailDraft {
     id: string;
     unique_slug: string;
     creator: { name: string; tiktok_handle: string } | null;
-    project: { name: string; brand: { name: string } | null } | null;
+    project: { name: string; brand: { id: string; name: string } | null } | null;
   } | null;
 }
 
@@ -227,7 +228,10 @@ export default function EmailQueuePage() {
       params.set('limit', '100');
 
       const res = await fetch(`/api/emails/drafts?${params}`);
-      if (res.ok) setDrafts(await res.json());
+      if (res.ok) {
+        const all = (await res.json()) as EmailDraft[];
+        setDrafts(all.filter((d) => !isDemoBrandId(d.project_creator?.project?.brand?.id)));
+      }
       setUnmatchedEmails([]);
     }
 

@@ -81,6 +81,10 @@ export interface Payment {
   payment_date: string;
   note?: string;
   invoice_url?: string;
+  /** True when this row is a refund (amount is negative). */
+  is_refund?: boolean;
+  /** The original payment this refund reverses, if any. */
+  refund_of?: string | null;
   created_at: string;
   updated_at: string;
 }

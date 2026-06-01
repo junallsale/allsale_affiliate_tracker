@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createSupabaseServer } from '@/lib/supabase-server';
+import { isDemoBrandId } from '@/lib/demo';
 
 function getServiceClient() {
   return createClient(
@@ -53,16 +54,18 @@ export async function GET(req: NextRequest) {
         // Find all project_creators for these creators
         const { data: pcs } = await supabase
           .from('project_creators')
-          .select('id, creator_id, project:projects(name, brand:brands(name))')
+          .select('id, creator_id, project:projects(name, brand_id, brand:brands(name))')
           .in('creator_id', creatorIds)
           .or('is_deleted.is.null,is_deleted.eq.false')
           .order('created_at', { ascending: false });
 
-        // Build email → suggestions map
+        // Build email → suggestions map (exclude demo brand)
         for (const creator of creators) {
           const email = creator.email?.toLowerCase();
           if (!email) continue;
-          const creatorPcs = (pcs || []).filter((pc: any) => pc.creator_id === creator.id);
+          const creatorPcs = (pcs || []).filter(
+            (pc: any) => pc.creator_id === creator.id && !isDemoBrandId((pc.project as any)?.brand_id)
+          );
           suggestionsByEmail[email] = creatorPcs.map((pc: any) => ({
             project_creator_id: pc.id,
             creator_name: creator.tiktok_handle || creator.name || 'Unknown',

@@ -7,7 +7,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import {
   ArrowLeft, Loader2, Copy, Check, DollarSign, Plus,
   Video, ExternalLink, FileText, Trash2, Upload, Pencil, Save, MessageSquare,
-  Package, X, PenLine, Bell, AlertCircle
+  Package, X, PenLine, Bell, AlertCircle, Undo2
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -109,6 +109,15 @@ export default function CreatorDetailPage() {
   const [addingPayment, setAddingPayment] = useState(false);
   const [uploadingInvoice, setUploadingInvoice] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Refund dialog
+  const [refundTarget, setRefundTarget] = useState<Payment | null>(null);
+  const [refundForm, setRefundForm] = useState({
+    amount: '',
+    refund_date: new Date().toISOString().split('T')[0],
+    note: '',
+  });
+  const [refunding, setRefunding] = useState(false);
 
   const [copiedUrl, setCopiedUrl] = useState(false);
 
@@ -277,6 +286,15 @@ export default function CreatorDetailPage() {
     }
   };
 
+  // How much of a given (positive) payment can still be refunded:
+  // its amount minus the sum of refunds already linked to it.
+  function refundableAmount(payment: Payment): number {
+    const alreadyRefunded = payments
+      .filter(p => p.refund_of === payment.id)
+      .reduce((s, p) => s + Math.abs(Number(p.amount)), 0);
+    return Math.max(0, Number(payment.amount) - alreadyRefunded);
+  }
+
   const handleAddPayment = async () => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return;
 
@@ -330,6 +348,43 @@ export default function CreatorDetailPage() {
       await fetchData();
     } catch (error) {
       console.error('Error deleting payment:', error);
+    }
+  };
+
+  const openRefundDialog = (payment: Payment) => {
+    setRefundTarget(payment);
+    setRefundForm({
+      // Default to the not-yet-refunded portion of this payment
+      amount: String(refundableAmount(payment)),
+      refund_date: new Date().toISOString().split('T')[0],
+      note: '',
+    });
+  };
+
+  const handleRefund = async () => {
+    if (!refundTarget) return;
+    const amt = parseFloat(refundForm.amount);
+    if (!amt || amt <= 0) return;
+    if (amt > refundableAmount(refundTarget) + 1e-6) return; // can't refund more than remaining
+    try {
+      setRefunding(true);
+      // Recorded as a negative-amount row linked to the original payment, so
+      // every SUM(amount) total across the app nets out automatically.
+      const { error } = await supabase.from('payments').insert({
+        project_creator_id: pcId,
+        amount: -Math.abs(amt),
+        payment_date: refundForm.refund_date,
+        note: refundForm.note || `Refund of ${formatCurrency(Number(refundTarget.amount))} payment`,
+        is_refund: true,
+        refund_of: refundTarget.id,
+      });
+      if (error) throw error;
+      setRefundTarget(null);
+      await fetchData();
+    } catch (error) {
+      console.error('Error recording refund:', error);
+    } finally {
+      setRefunding(false);
     }
   };
 
@@ -643,6 +698,10 @@ export default function CreatorDetailPage() {
   const progressPercent = getProgressPercent(activeVideos.length, pcData.assigned_video_count);
   const creatorStatus = getCreatorStatus(activeVideos.length, pcData.assigned_video_count);
   const contractAmount = pcData.contract_amount || 0;
+  // Refunds are stored as negative rows, so totalPaid is already the net paid.
+  const totalRefunded = payments
+    .filter(p => p.is_refund || Number(p.amount) < 0)
+    .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
   const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const balance = contractAmount - totalPaid;
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -828,8 +887,13 @@ export default function CreatorDetailPage() {
             <CardContent className="pt-6">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Paid</p>
+                  <p className="text-sm text-muted-foreground mb-1">Paid (net)</p>
                   <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalPaid)}</p>
+                  {totalRefunded > 0 && (
+                    <p className="text-xs text-destructive mt-0.5">
+                      incl. {formatCurrency(totalRefunded)} refunded
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-muted-foreground mb-1">Balance</p>
@@ -1489,7 +1553,7 @@ export default function CreatorDetailPage() {
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Note</TableHead>
                   <TableHead>Invoice</TableHead>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className="w-20 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1500,14 +1564,22 @@ export default function CreatorDetailPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  payments.map((payment) => (
-                    <TableRow key={payment.id}>
+                  payments.map((payment) => {
+                    const isRefund = payment.is_refund || Number(payment.amount) < 0;
+                    const refundable = isRefund ? 0 : refundableAmount(payment);
+                    return (
+                    <TableRow key={payment.id} className={cn(isRefund && 'bg-destructive/5')}>
                       <TableCell>
                         {new Date(payment.payment_date).toLocaleDateString('en-US', {
                           year: 'numeric', month: 'short', day: 'numeric'
                         })}
                       </TableCell>
-                      <TableCell className="text-right font-medium">
+                      <TableCell className={cn('text-right font-medium', isRefund && 'text-destructive')}>
+                        {isRefund && (
+                          <Badge variant="outline" className="mr-2 border-destructive/40 text-destructive text-[10px]">
+                            Refund
+                          </Badge>
+                        )}
                         {formatCurrency(Number(payment.amount))}
                       </TableCell>
                       <TableCell>
@@ -1530,20 +1602,34 @@ export default function CreatorDetailPage() {
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      {canDelete && (
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="w-7 h-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeletePayment(payment.id)}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </TableCell>
-                      )}
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          {canAddPayment && !isRefund && refundable > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="w-7 h-7 text-muted-foreground hover:text-amber-600"
+                              onClick={() => openRefundDialog(payment)}
+                              title="Record refund"
+                            >
+                              <Undo2 className="w-3 h-3" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="w-7 h-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeletePayment(payment.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -1730,6 +1816,82 @@ export default function CreatorDetailPage() {
                 </>
               ) : (
                 'Add Payment'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Refund Dialog */}
+      <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open) setRefundTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Refund</DialogTitle>
+            <DialogDescription>
+              {refundTarget && (
+                <>
+                  Refunding a payment of {formatCurrency(Number(refundTarget.amount))} made on{' '}
+                  {new Date(refundTarget.payment_date).toLocaleDateString('en-US', {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                  })}. Up to {formatCurrency(refundableAmount(refundTarget))} can be refunded.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="refund-amount">Refund Amount</Label>
+              <Input
+                id="refund-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={refundForm.amount}
+                onChange={(e) => setRefundForm(prev => ({ ...prev, amount: e.target.value }))}
+              />
+              {refundTarget && parseFloat(refundForm.amount || '0') > refundableAmount(refundTarget) + 1e-6 && (
+                <p className="text-xs text-destructive">
+                  Cannot refund more than {formatCurrency(refundableAmount(refundTarget))}.
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="refund-date">Refund Date</Label>
+              <Input
+                id="refund-date"
+                type="date"
+                value={refundForm.refund_date}
+                onChange={(e) => setRefundForm(prev => ({ ...prev, refund_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="refund-note">Note (optional)</Label>
+              <Textarea
+                id="refund-note"
+                placeholder="Reason for refund"
+                value={refundForm.note}
+                onChange={(e) => setRefundForm(prev => ({ ...prev, note: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefundTarget(null)} disabled={refunding}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRefund}
+              disabled={
+                refunding ||
+                !refundForm.amount ||
+                parseFloat(refundForm.amount) <= 0 ||
+                !!(refundTarget && parseFloat(refundForm.amount) > refundableAmount(refundTarget) + 1e-6)
+              }
+            >
+              {refunding ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Recording...</>
+              ) : (
+                'Record Refund'
               )}
             </Button>
           </DialogFooter>

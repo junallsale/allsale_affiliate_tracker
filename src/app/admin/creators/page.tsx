@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
+import { isDemoBrandId } from '@/lib/demo';
 import {
   Users, Search, ExternalLink, Download, History, FolderOpen,
   ChevronDown, ChevronUp, Loader2, Plus, Check,
@@ -189,9 +190,9 @@ export default function CreatorsPage() {
       }
       setCreators(allRows);
       const { data: b } = await supabase.from('brands').select('id, name').order('name');
-      if (b) setBrands(b as any[]);
+      if (b) setBrands((b as any[]).filter((br) => !isDemoBrandId(br.id)));
       const { data: p } = await supabase.from('projects').select('id, name, brand_id').order('name');
-      if (p) setAllProjectsList(p as any[]);
+      if (p) setAllProjectsList((p as any[]).filter((pr) => !isDemoBrandId(pr.brand_id)));
       setLoading(false);
     }
     fetchData();

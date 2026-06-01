@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import type { UserRole } from '@/hooks/useUserRole';
 import { useFavoriteProjects } from '@/hooks/useFavoriteProjects';
+import { isDemoBrandId } from '@/lib/demo';
 
 type NavLink = { label: string; href: string; icon: typeof Database; roles: UserRole[] };
 
@@ -74,19 +75,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // Needs Review: count unique non-deleted project_creators with active reviews
     const { data: reviewRows } = await supabase
       .from('project_creators')
-      .select('id, project_creator_reviews!inner(status)')
+      .select('id, projects(brand_id), project_creator_reviews!inner(status)')
       .or('is_deleted.is.null,is_deleted.eq.false')
       .in('project_creator_reviews.status', ['need_review', 'in_progress']);
-    const reviewCount = (reviewRows || []).length;
+    const reviewCount = (reviewRows || []).filter(
+      (r: any) => !isDemoBrandId(r.projects?.brand_id)
+    ).length;
     // Posting Complete: signed + all videos submitted + not confirmed
     const { data: pcRows } = await supabase
       .from('project_creators')
-      .select('id, assigned_video_count, videos(id, status)')
+      .select('id, assigned_video_count, projects(brand_id), videos(id, status)')
       .not('signed_at', 'is', null)
       .eq('posting_confirmed', false)
       .or('is_deleted.is.null,is_deleted.eq.false');
     const postingCount = (pcRows || []).filter(
-      (r: any) => ((r.videos as any[]) || []).filter((v: any) => v.status !== 'rejected').length >= ((r as any).assigned_video_count || 1)
+      (r: any) => !isDemoBrandId(r.projects?.brand_id) &&
+        ((r.videos as any[]) || []).filter((v: any) => v.status !== 'rejected').length >= ((r as any).assigned_video_count || 1)
     ).length;
     setChecklistBadgeCount(reviewCount + postingCount);
   }, []);
@@ -129,7 +133,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       const creatorIds = creators.map((c: any) => c.id);
       const { data: pcs } = await supabase
         .from('project_creators')
-        .select('id, project_id, creator_id, projects(id, name, brands(name, slug))')
+        .select('id, project_id, creator_id, projects(id, name, brand_id, brands(name, slug))')
         .in('creator_id', creatorIds)
         .or('is_deleted.is.null,is_deleted.eq.false')
         .order('created_at', { ascending: false })
@@ -139,6 +143,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         .map((pc: any) => {
           const c = creatorMap.get(pc.creator_id);
           if (!c || !pc.projects?.brands?.slug) return null;
+          if (isDemoBrandId(pc.projects?.brand_id)) return null;
           return {
             pc_id: pc.id,
             project_id: pc.project_id,

@@ -18,6 +18,7 @@ import { FIXED_COLUMNS, DEFAULT_VISIBLE_COLUMNS } from '@/lib/affiliate-columns'
 import type { AffiliateCreator, AffiliateView, AffiliateCustomColumn, ViewFilter, AssignResult } from '@/types/database';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import { useUserRole } from '@/hooks/useUserRole';
+import { isDemoBrandId } from '@/lib/demo';
 
 interface BrandOption {
   id: string;
@@ -91,13 +92,13 @@ export default function AffiliatesPage() {
         if (Array.isArray(cols)) setCustomColumns(cols);
       }
       if (brandsRes.data && brandsRes.data.length > 0) {
-        setBrands(brandsRes.data as BrandOption[]);
+        setBrands((brandsRes.data as BrandOption[]).filter((b) => !isDemoBrandId(b.id)));
       } else {
         // Fallback: extract unique brands from affiliate data
         console.warn('Brands fetch returned empty, RLS may be blocking');
       }
       if (projectsRes.data && projectsRes.data.length > 0) {
-        setProjects(projectsRes.data as ProjectOption[]);
+        setProjects((projectsRes.data as ProjectOption[]).filter((p) => !isDemoBrandId(p.brand_id)));
       } else {
         console.warn('Projects fetch returned empty, RLS may be blocking');
       }

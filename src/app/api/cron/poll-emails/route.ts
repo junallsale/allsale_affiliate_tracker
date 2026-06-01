@@ -5,6 +5,7 @@ import { listNewEmails, getEmailById } from '@/lib/gmail';
 import { classifyEmail } from '@/lib/email-classifier';
 import { composeDraft } from '@/lib/draft-composer';
 import { escalateToSlack } from '@/lib/slack';
+import { isDemoBrandId } from '@/lib/demo';
 
 function getServiceClient() {
   return createClient(
@@ -102,7 +103,7 @@ export async function GET(req: NextRequest) {
         // project_creator_id=null and surfaced in the "unmatched" tab of
         // /admin/email-queue for manual triage.
         let pcMatch: any = null;
-        const pcSelect = 'id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand:brands(name))';
+        const pcSelect = 'id, creator:creators(email, tiktok_handle), project:projects(id, name, require_shipping_address, brand_id, brand:brands(name))';
 
         // 1. Match by Gmail thread ID — if we sent an outbound email in this thread, reuse its project_creator_id
         if (email.threadId) {
@@ -175,6 +176,9 @@ export async function GET(req: NextRequest) {
         const project = (pcMatch as any).project;
         const creator = (pcMatch as any).creator;
         const pcId = (pcMatch as any).id;
+
+        // Skip demo data — never auto-draft or escalate for the demo brand
+        if (isDemoBrandId(project?.brand_id)) continue;
 
         // Handle escalation cases
         if (classification === 'contract_modification') {

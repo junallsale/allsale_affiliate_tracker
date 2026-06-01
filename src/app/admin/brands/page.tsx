@@ -14,6 +14,7 @@ import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import { Brand } from '@/types/database';
 import { generateSlug } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
+import { isDemoBrandId } from '@/lib/demo';
 
 interface BrandWithProjectCount extends Brand {
   project_count: number;
@@ -47,10 +48,12 @@ export default function BrandsPage() {
 
       if (error) throw error;
 
-      const brandsWithCounts = (data || []).map((brand: any) => ({
-        ...brand,
-        project_count: brand.projects?.[0]?.count || 0,
-      }));
+      const brandsWithCounts = (data || [])
+        .filter((brand: any) => !isDemoBrandId(brand.id))
+        .map((brand: any) => ({
+          ...brand,
+          project_count: brand.projects?.[0]?.count || 0,
+        }));
 
       setBrands(brandsWithCounts);
     } catch (error) {

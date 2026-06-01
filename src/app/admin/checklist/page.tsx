@@ -26,6 +26,7 @@ import {
 
 import { cn } from '@/lib/utils';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
+import { isDemoBrandId } from '@/lib/demo';
 import MemoDialog from './MemoDialog';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -127,7 +128,9 @@ export default function ChecklistPage() {
     if (error) {
       console.error('Checklist fetch error:', error.message);
     } else {
-      setAllRows((data as unknown as ChecklistRow[]) || []);
+      const rows = ((data as unknown as ChecklistRow[]) || [])
+        .filter((row) => !isDemoBrandId(row.projects?.brand_id));
+      setAllRows(rows);
     }
     setLoading(false);
   }, [supabase]);

@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     if (pcIds.length > 0) {
       const { data: pcs } = await supabase
         .from('project_creators')
-        .select('id, unique_slug, creator:creators(name, tiktok_handle), project:projects(name, brand:brands(name))')
+        .select('id, unique_slug, creator:creators(name, tiktok_handle), project:projects(name, brand:brands(id, name))')
         .in('id', pcIds);
 
       for (const pc of pcs || []) {

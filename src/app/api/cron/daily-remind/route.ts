@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { composeEmail, getThreadInfo, toReplySubject } from '@/lib/email-service';
 import { escalateToSlack } from '@/lib/slack';
+import { isDemoBrandId } from '@/lib/demo';
 
 function getServiceClient() {
   return createClient(
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, unique_slug, signed_at, created_at, contract_amount, advance_payment,
       creator:creators(name, email, tiktok_handle),
-      project:projects!inner(id, name, status, submission_deadline, require_shipping_address, brand:brands(name)),
+      project:projects!inner(id, name, status, submission_deadline, require_shipping_address, brand_id, brand:brands(name)),
       videos(id)
     `)
     .eq('project.status', 'active')
@@ -61,6 +62,9 @@ export async function GET(req: NextRequest) {
     const videos = (pc.videos || []) as any[];
     const createdAt = new Date(pc.created_at);
     const signedAt = pc.signed_at ? new Date(pc.signed_at) : null;
+
+    // Skip demo data — never generate reminders/escalations for the demo brand
+    if (isDemoBrandId(project?.brand_id)) continue;
 
     // Skip if created less than 1 day ago
     if (createdAt > oneDayAgo) continue;
