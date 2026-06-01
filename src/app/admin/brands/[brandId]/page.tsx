@@ -137,13 +137,18 @@ export default function BrandDetailPage() {
           (projectsData || []).map(async (project: any) => {
             const { data: pcData } = await supabase
               .from('project_creators')
-              .select('assigned_video_count, videos(id)')
-              .eq('project_id', project.id);
+              .select('assigned_video_count, videos(id, status)')
+              .eq('project_id', project.id)
+              // Match the project detail page: exclude soft-deleted creators
+              .or('is_deleted.is.null,is_deleted.eq.false');
 
             const pcs = pcData || [];
+            // Uploaded count excludes rejected videos, same as the detail page.
+            const uploadedCount = (pc: any) =>
+              (pc.videos || []).filter((v: any) => v.status !== 'rejected').length;
             const totalVideosAssigned = pcs.reduce((sum: number, pc: any) => sum + (pc.assigned_video_count || 0), 0);
-            const totalVideosUploaded = pcs.reduce((sum: number, pc: any) => sum + (pc.videos?.length || 0), 0);
-            const completedCreators = pcs.filter((pc: any) => (pc.videos?.length || 0) >= (pc.assigned_video_count || 0) && (pc.assigned_video_count || 0) > 0).length;
+            const totalVideosUploaded = pcs.reduce((sum: number, pc: any) => sum + uploadedCount(pc), 0);
+            const completedCreators = pcs.filter((pc: any) => (pc.assigned_video_count || 0) > 0 && uploadedCount(pc) >= (pc.assigned_video_count || 0)).length;
 
             return {
               ...project,
@@ -231,13 +236,18 @@ export default function BrandDetailPage() {
           projectsData.map(async (project: any) => {
             const { data: pcData } = await supabase
               .from('project_creators')
-              .select('assigned_video_count, videos(id)')
-              .eq('project_id', project.id);
+              .select('assigned_video_count, videos(id, status)')
+              .eq('project_id', project.id)
+              // Match the project detail page: exclude soft-deleted creators
+              .or('is_deleted.is.null,is_deleted.eq.false');
 
             const pcs = pcData || [];
+            // Uploaded count excludes rejected videos, same as the detail page.
+            const uploadedCount = (pc: any) =>
+              (pc.videos || []).filter((v: any) => v.status !== 'rejected').length;
             const totalVideosAssigned = pcs.reduce((sum: number, pc: any) => sum + (pc.assigned_video_count || 0), 0);
-            const totalVideosUploaded = pcs.reduce((sum: number, pc: any) => sum + (pc.videos?.length || 0), 0);
-            const completedCreators = pcs.filter((pc: any) => (pc.videos?.length || 0) >= (pc.assigned_video_count || 0) && (pc.assigned_video_count || 0) > 0).length;
+            const totalVideosUploaded = pcs.reduce((sum: number, pc: any) => sum + uploadedCount(pc), 0);
+            const completedCreators = pcs.filter((pc: any) => (pc.assigned_video_count || 0) > 0 && uploadedCount(pc) >= (pc.assigned_video_count || 0)).length;
 
             return {
               ...project,
