@@ -59,6 +59,20 @@ const CONSISTENCY_OPTIONS = [
   { value: 'lifestyle', label: 'Lifestyle', color: 'bg-purple-100 text-purple-700' },
 ];
 
+interface AddCreatorForm {
+  handle: string; email: string; category: string; gender: string;
+  language: string; race: string; consistency: string; tier: string;
+  gmv: string; avg_view: string; followers: string;
+  price_per_video: string; price_comment: string;
+}
+
+const EMPTY_ADD_FORM: AddCreatorForm = {
+  handle: '', email: '', category: '', gender: '',
+  language: '', race: '', consistency: '', tier: '',
+  gmv: '', avg_view: '', followers: '',
+  price_per_video: '', price_comment: '',
+};
+
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
@@ -163,6 +177,12 @@ export default function CreatorsPage() {
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Add creator dialog
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState<AddCreatorForm>({ ...EMPTY_ADD_FORM });
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   // Exclude-by-brand filter
   const [excludeBrandId, setExcludeBrandId] = useState<string>('');
@@ -392,6 +412,59 @@ export default function CreatorsPage() {
     setAssignOpen(true);
   };
 
+  const openAddDialog = () => {
+    setAddForm({ ...EMPTY_ADD_FORM });
+    setAddError(null);
+    setAddOpen(true);
+  };
+
+  const toggleAddCategory = (cat: string) => {
+    setAddForm(prev => {
+      const cats = new Set(prev.category.split(',').map(s => s.trim()).filter(Boolean));
+      if (cats.has(cat)) cats.delete(cat); else cats.add(cat);
+      return { ...prev, category: [...cats].join(', ') };
+    });
+  };
+
+  const submitAddCreator = async () => {
+    const handle = addForm.handle.trim().toLowerCase().replace(/^@/, '');
+    if (!handle) { setAddError('Handle is required'); return; }
+    if (creators.some(c => c.handle.toLowerCase() === handle)) {
+      setAddError('A creator with this handle already exists'); return;
+    }
+    setAdding(true);
+    setAddError(null);
+    const payload: Record<string, unknown> = { handle };
+    if (addForm.email.trim()) payload.email = addForm.email.trim();
+    if (addForm.category.trim()) payload.category = addForm.category.trim();
+    if (addForm.gender) payload.gender = addForm.gender;
+    if (addForm.language) payload.language = addForm.language;
+    if (addForm.race) payload.race = addForm.race;
+    if (addForm.consistency) payload.consistency = addForm.consistency;
+    if (addForm.tier) payload.tier = parseInt(addForm.tier);
+    if (addForm.gmv !== '') payload.gmv = Number(addForm.gmv);
+    if (addForm.avg_view !== '') payload.avg_view = Number(addForm.avg_view);
+    if (addForm.followers !== '') payload.followers = Number(addForm.followers);
+    if (addForm.price_per_video !== '') payload.price_per_video = Number(addForm.price_per_video);
+    if (addForm.price_comment.trim()) payload.price_comment = addForm.price_comment.trim();
+    try {
+      const res = await fetch('/api/creators/master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAddError(data.error || 'Failed to add creator'); return; }
+      setCreators(prev => [data as CreatorMaster, ...prev]);
+      setAddOpen(false);
+      setAddForm({ ...EMPTY_ADD_FORM });
+    } catch {
+      setAddError('Network error');
+    } finally {
+      setAdding(false);
+    }
+  };
+
   const SortIcon = ({ field }: { field: string }) => (
     sortField === field ? (sortAsc ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />) : null
   );
@@ -432,9 +505,14 @@ export default function CreatorsPage() {
             {creators.length} creators · {totalWithPrice} with pricing · {totalWithProjects} assigned to projects
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleDownloadCsv}>
-          <Download className="w-4 h-4 mr-2" /> CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={openAddDialog}>
+            <Plus className="w-4 h-4 mr-2" /> Add Creator
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadCsv}>
+            <Download className="w-4 h-4 mr-2" /> CSV
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -1078,6 +1156,160 @@ export default function CreatorsPage() {
             }} disabled={assigning || !assignBrandId || !assignProjectId || assignHandles.length === 0}>
               {assigning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
               Assign{assignHandles.length > 1 ? ` ${assignHandles.length}` : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Creator Dialog */}
+      <Dialog open={addOpen} onOpenChange={(open) => { if (!open) { setAddOpen(false); setAddError(null); } }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Creator</DialogTitle>
+            <DialogDescription>
+              Create a new record in the creator database. Only the handle is required.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Handle <span className="text-red-500">*</span></Label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span>
+                  <Input
+                    autoFocus
+                    placeholder="username"
+                    value={addForm.handle}
+                    onChange={(e) => setAddForm(f => ({ ...f, handle: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !adding) submitAddCreator(); }}
+                    className="pl-6"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  placeholder="creator@email.com"
+                  value={addForm.email}
+                  onChange={(e) => setAddForm(f => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Category</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {CATEGORY_OPTIONS.map(cat => {
+                  const active = addForm.category.split(',').map(s => s.trim()).includes(cat);
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => toggleAddCategory(cat)}
+                      className={cn(
+                        'px-2.5 py-1 rounded text-xs font-medium border transition-colors',
+                        active ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-background text-muted-foreground hover:bg-muted'
+                      )}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>GMV ($)</Label>
+                <Input type="number" inputMode="numeric" placeholder="0"
+                  value={addForm.gmv} onChange={(e) => setAddForm(f => ({ ...f, gmv: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Avg View</Label>
+                <Input type="number" inputMode="numeric" placeholder="0"
+                  value={addForm.avg_view} onChange={(e) => setAddForm(f => ({ ...f, avg_view: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Followers</Label>
+                <Input type="number" inputMode="numeric" placeholder="0"
+                  value={addForm.followers} onChange={(e) => setAddForm(f => ({ ...f, followers: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Price / Video ($)</Label>
+                <Input type="number" inputMode="numeric" placeholder="0"
+                  value={addForm.price_per_video} onChange={(e) => setAddForm(f => ({ ...f, price_per_video: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tier</Label>
+                <select className="flex h-10 w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  value={addForm.tier} onChange={(e) => setAddForm(f => ({ ...f, tier: e.target.value }))}>
+                  <option value="">-</option>
+                  <option value="1">1 Good</option>
+                  <option value="2">2 Fair</option>
+                  <option value="3">3 High</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Price Comment</Label>
+              <Input placeholder="e.g. Single TikTok video rate"
+                value={addForm.price_comment} onChange={(e) => setAddForm(f => ({ ...f, price_comment: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Gender</Label>
+                <select className="flex h-10 w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  value={addForm.gender} onChange={(e) => setAddForm(f => ({ ...f, gender: e.target.value }))}>
+                  <option value="">-</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Language</Label>
+                <select className="flex h-10 w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  value={addForm.language} onChange={(e) => setAddForm(f => ({ ...f, language: e.target.value }))}>
+                  <option value="">-</option>
+                  <option value="English">English</option>
+                  <option value="Spanish">Spanish</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Race</Label>
+                <select className="flex h-10 w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  value={addForm.race} onChange={(e) => setAddForm(f => ({ ...f, race: e.target.value }))}>
+                  <option value="">-</option>
+                  <option value="White">White</option>
+                  <option value="Black">Black</option>
+                  <option value="Hispanic">Hispanic</option>
+                  <option value="Asian">Asian</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Consistency</Label>
+                <select className="flex h-10 w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  value={addForm.consistency} onChange={(e) => setAddForm(f => ({ ...f, consistency: e.target.value }))}>
+                  <option value="">-</option>
+                  {CONSISTENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {addError && <p className="text-sm text-red-600">{addError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={submitAddCreator} disabled={adding || !addForm.handle.trim()}>
+              {adding ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+              Add Creator
             </Button>
           </DialogFooter>
         </DialogContent>
