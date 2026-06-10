@@ -108,6 +108,21 @@ export async function GET(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    // Aggregate comment counts per creator for the rows in this view
+    const commentCounts: Record<string, number> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const creatorIds = (data || []).map((row: any) => row.id).filter(Boolean);
+    if (creatorIds.length > 0) {
+      const { data: commentRows } = await supabase
+        .from("affiliate_comments")
+        .select("affiliate_creator_id")
+        .in("affiliate_creator_id", creatorIds);
+      for (const c of commentRows || []) {
+        const cid = c.affiliate_creator_id as string;
+        commentCounts[cid] = (commentCounts[cid] || 0) + 1;
+      }
+    }
+
     return NextResponse.json({
       view: {
         id: view.id,
@@ -117,6 +132,7 @@ export async function GET(
         sort_config: view.sort_config,
       },
       data,
+      commentCounts,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

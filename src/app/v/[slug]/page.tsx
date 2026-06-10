@@ -48,6 +48,7 @@ interface ViewData {
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: Record<string, any>[];
+  commentCounts?: Record<string, number>;
 }
 
 export default function PublicViewPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -59,6 +60,7 @@ export default function PublicViewPage({ params }: { params: Promise<{ slug: str
   // Comments
   const [commentTarget, setCommentTarget] = useState<{ id: string; handle: string } | null>(null);
   const [comments, setComments] = useState<AffiliateComment[]>([]);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [myCommentIds, setMyCommentIds] = useState<Set<string>>(new Set());
   const [commentName, setCommentName] = useState('');
   const [commentContent, setCommentContent] = useState('');
@@ -87,6 +89,7 @@ export default function PublicViewPage({ params }: { params: Promise<{ slug: str
         }
         const data = await res.json();
         setViewData(data);
+        setCommentCounts(data.commentCounts || {});
       } catch {
         setError('Failed to load view');
       } finally {
@@ -99,7 +102,11 @@ export default function PublicViewPage({ params }: { params: Promise<{ slug: str
   const fetchComments = useCallback(async (creatorId: string) => {
     try {
       const res = await fetch(`/api/affiliates/comments?affiliate_creator_id=${creatorId}`);
-      if (res.ok) setComments(await res.json());
+      if (res.ok) {
+        const list: AffiliateComment[] = await res.json();
+        setComments(list);
+        setCommentCounts((prev) => ({ ...prev, [creatorId]: list.length }));
+      }
     } catch (err) {
       console.error('Failed to fetch comments:', err);
     }
@@ -368,12 +375,28 @@ export default function PublicViewPage({ params }: { params: Promise<{ slug: str
                     </td>
                   ))}
                   <td className="px-2 py-2.5">
-                    <button
-                      onClick={() => openComments(row.id, row.handle)}
-                      className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                    </button>
+                    {(() => {
+                      const count = commentCounts[row.id] || 0;
+                      const hasComments = count > 0;
+                      return (
+                        <button
+                          onClick={() => openComments(row.id, row.handle)}
+                          className={`relative flex items-center gap-1 px-1.5 py-1 rounded transition-colors ${
+                            hasComments
+                              ? 'text-indigo-600 hover:bg-indigo-50'
+                              : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                          }`}
+                          title={hasComments ? `${count} comment${count > 1 ? 's' : ''}` : 'Add comment'}
+                        >
+                          <MessageSquare className={`h-4 w-4 ${hasComments ? 'fill-indigo-100' : ''}`} />
+                          {hasComments && (
+                            <span className="min-w-[16px] text-center text-xs font-semibold leading-none">
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
