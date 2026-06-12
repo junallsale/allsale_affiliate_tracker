@@ -272,6 +272,19 @@ export interface FinanceInvoiceLine {
   refund_updated_by: string | null;
 }
 
+/** Money actually received from a brand for a period (manual monthly entry). */
+export interface BrandSettlement {
+  id: string;
+  brand_id: string;
+  period_year: number;
+  period_month: number;
+  amount: number;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type AssignResultStatus = 'assigned' | 'already_assigned' | 'deleted_in_project' | 'reactivated';
 
 export interface AssignResultRow {

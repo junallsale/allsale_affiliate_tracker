@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, ExternalLink, Loader2, History, FolderOpen, Plus, Check,
+  ArrowLeft, ExternalLink, Loader2, History, FolderOpen, Plus, Check, Pencil,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -72,6 +72,12 @@ export default function CreatorDetailPage() {
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<string | null>(null);
 
+  // Edit creator info (handle / email / payment_email)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ handle: '', email: '', payment_email: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const { data: cm } = await supabase.from('creator_master').select('*').eq('id', creatorId).single();
@@ -129,6 +135,46 @@ export default function CreatorDetailPage() {
     finally { setAddingHistory(false); }
   };
 
+  const openEdit = () => {
+    if (!creator) return;
+    setEditForm({
+      handle: creator.handle || '',
+      email: creator.email || '',
+      payment_email: creator.payment_email || '',
+    });
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!creator) return;
+    const cleanHandle = editForm.handle.trim().toLowerCase().replace(/^@+/, '');
+    if (!cleanHandle) { setEditError('Handle is required'); return; }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const { error } = await supabase
+        .from('creator_master')
+        .update({
+          handle: cleanHandle,
+          email: editForm.email.trim() || null,
+          payment_email: editForm.payment_email.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', creator.id);
+      if (error) {
+        setEditError(error.code === '23505' ? 'Another creator already uses this handle' : error.message);
+        return;
+      }
+      setEditOpen(false);
+      await fetchData();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const handleAssign = async () => {
     if (!creator || !assignBrandId || !assignProjectId) return;
     setAssigning(true); setAssignResult(null);
@@ -171,9 +217,14 @@ export default function CreatorDetailPage() {
             {creator.payment_email && <span>PayPal: {creator.payment_email}</span>}
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { setAssignOpen(true); setAssignResult(null); }}>
-          <Plus className="w-4 h-4 mr-2" /> Assign to Project
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={openEdit}>
+            <Pencil className="w-4 h-4 mr-2" /> Edit Info
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => { setAssignOpen(true); setAssignResult(null); }}>
+            <Plus className="w-4 h-4 mr-2" /> Assign to Project
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -275,6 +326,57 @@ export default function CreatorDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Info Dialog */}
+      <Dialog open={editOpen} onOpenChange={(open) => { if (!savingEdit) { setEditOpen(open); if (!open) setEditError(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Creator Info</DialogTitle>
+            <DialogDescription>Update the handle and email addresses.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Handle <span className="text-red-500">*</span></Label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span>
+                <Input
+                  autoFocus
+                  className="pl-6"
+                  placeholder="username"
+                  value={editForm.handle}
+                  onChange={(e) => setEditForm(f => ({ ...f, handle: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !savingEdit) handleSaveEdit(); }}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                placeholder="creator@email.com"
+                value={editForm.email}
+                onChange={(e) => setEditForm(f => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>PayPal / Payment Email</Label>
+              <Input
+                type="email"
+                placeholder="paypal@email.com"
+                value={editForm.payment_email}
+                onChange={(e) => setEditForm(f => ({ ...f, payment_email: e.target.value }))}
+              />
+            </div>
+            {editError && <p className="text-sm text-red-600">{editError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={savingEdit}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={savingEdit || !editForm.handle.trim()}>
+              {savingEdit ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />} Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Assign Dialog */}
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>

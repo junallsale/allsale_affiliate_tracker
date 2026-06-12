@@ -1,22 +1,25 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Loader2, DollarSign, TrendingUp, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { Loader2, DollarSign, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { createSupabaseBrowser } from '@/lib/supabase-browser';
 import { isDemoBrandId } from '@/lib/demo';
+import {
+  toContractInput, brandMonthInvoice, brandAllTimeInvoice,
+  paidInMonth, paidAllTime, type ContractInput, type MonthBucket,
+} from '@/lib/finance-invoice';
 
 interface PCRow {
-  contract_amount: number;
-  created_at: string;
+  id: string;
+  contract_amount: number | null;
+  assigned_video_count: number;
   signed_at: string | null;
   projects: {
     id: string;
@@ -24,6 +27,8 @@ interface PCRow {
     brand_id: string;
     brands: { id: string; name: string };
   };
+  videos: { status: string; created_at: string | null }[];
+  payments: { amount: number; payment_date: string }[];
 }
 
 const formatCurrency = (n: number) =>
@@ -31,125 +36,111 @@ const formatCurrency = (n: number) =>
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+interface BrandRow {
+  id: string;
+  name: string;
+  contracts: ContractInput[];
+  payments: { amount: number; payment_date: string }[];
+}
+
 export default function FinancePage() {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [loading, setLoading] = useState(true);
   const [allData, setAllData] = useState<PCRow[]>([]);
+  // settlements: brandId -> (`${year}-${month1}` -> amount)
+  const [settlements, setSettlements] = useState<Map<string, Map<string, number>>>(new Map());
 
-  // Current month view (default: this month)
+  const [viewMode, setViewMode] = useState<'all' | 'month'>('all');
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth()); // 0-indexed
+  const [month, setMonth] = useState(now.getMonth());
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('project_creators')
-        .select('contract_amount, created_at, signed_at, projects(id, name, brand_id, brands(id, name))')
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .not('signed_at', 'is', null)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        const rows = (data as unknown as PCRow[])
-          .filter((row) => !isDemoBrandId(row.projects?.brand_id));
-        setAllData(rows);
+      // Paginate to fetch all project_creators (Supabase 1000-row default)
+      const rows: PCRow[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('project_creators')
+          .select('id, contract_amount, assigned_video_count, signed_at, projects(id, name, brand_id, brands(id, name)), videos(status, created_at), payments(amount, payment_date)')
+          .or('is_deleted.is.null,is_deleted.eq.false')
+          .not('signed_at', 'is', null)
+          .range(from, from + pageSize - 1);
+        if (error || !data || data.length === 0) break;
+        rows.push(...(data as unknown as PCRow[]));
+        if (data.length < pageSize) break;
+        from += pageSize;
       }
+      setAllData(rows.filter(r => !isDemoBrandId(r.projects?.brand_id)));
+
+      // Brand settlements (resilient to table not existing yet)
+      const { data: sData } = await supabase
+        .from('brand_settlements')
+        .select('brand_id, period_year, period_month, amount');
+      const map = new Map<string, Map<string, number>>();
+      for (const s of (sData || []) as { brand_id: string; period_year: number; period_month: number; amount: number }[]) {
+        if (!map.has(s.brand_id)) map.set(s.brand_id, new Map());
+        map.get(s.brand_id)!.set(`${s.period_year}-${s.period_month}`, Number(s.amount) || 0);
+      }
+      setSettlements(map);
+
       setLoading(false);
     }
     fetchData();
   }, [supabase]);
 
-  // Filter by selected month
-  const monthData = useMemo(() => {
-    const startStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-    const endMonth = month === 11 ? 0 : month + 1;
-    const endYear = month === 11 ? year + 1 : year;
-    const endStr = `${endYear}-${String(endMonth + 1).padStart(2, '0')}-01`;
+  const bucket: MonthBucket = useMemo(() => ({ year, month: month + 1 }), [year, month]);
 
-    return allData.filter(row => row.signed_at && row.signed_at >= startStr && row.signed_at < endStr);
-  }, [allData, year, month]);
-
-  // Group by brand → project
-  interface ProjectSummary { name: string; total: number; count: number; freeCount: number }
-  interface BrandSummary { id: string; name: string; total: number; count: number; freeCount: number; projects: ProjectSummary[] }
-
-  const brandSummary = useMemo(() => {
-    const map = new Map<string, BrandSummary>();
-
-    for (const row of monthData) {
+  // Group rows by brand → ContractInput[] + payments[]
+  const brands: BrandRow[] = useMemo(() => {
+    const map = new Map<string, BrandRow>();
+    for (const row of allData) {
+      const brandId = row.projects?.brands?.id || row.projects?.brand_id || 'unknown';
       const brandName = row.projects?.brands?.name || 'Unknown';
-      const brandId = row.projects?.brands?.id || 'unknown';
-      const projectName = row.projects?.name || 'Unknown';
-
-      const existing = map.get(brandId) || { id: brandId, name: brandName, total: 0, count: 0, freeCount: 0, projects: [] };
-      existing.total += row.contract_amount || 0;
-      existing.count += 1;
-      if (!row.contract_amount || row.contract_amount === 0) existing.freeCount += 1;
-
-      // Project level
-      let proj = existing.projects.find(p => p.name === projectName);
-      if (!proj) {
-        proj = { name: projectName, total: 0, count: 0, freeCount: 0 };
-        existing.projects.push(proj);
-      }
-      proj.total += row.contract_amount || 0;
-      proj.count += 1;
-      if (!row.contract_amount || row.contract_amount === 0) proj.freeCount += 1;
-
+      const existing = map.get(brandId) || { id: brandId, name: brandName, contracts: [], payments: [] };
+      existing.contracts.push(toContractInput(row as unknown as Parameters<typeof toContractInput>[0]));
+      existing.payments.push(...(row.payments || []));
       map.set(brandId, existing);
     }
+    return [...map.values()];
+  }, [allData]);
 
-    const result = [...map.values()].sort((a, b) => b.total - a.total);
-    result.forEach(b => b.projects.sort((a, b) => b.total - a.total));
-    return result;
-  }, [monthData]);
+  const receivedFor = (brandId: string): number => {
+    const bm = settlements.get(brandId);
+    if (!bm) return 0;
+    if (viewMode === 'all') return [...bm.values()].reduce((s, v) => s + v, 0);
+    return bm.get(`${year}-${month + 1}`) ?? 0;
+  };
 
-  const grandTotal = brandSummary.reduce((s, b) => s + b.total, 0);
-  const totalCreators = brandSummary.reduce((s, b) => s + b.count, 0);
-  const totalFree = brandSummary.reduce((s, b) => s + b.freeCount, 0);
+  // Per-brand metrics for the active view
+  const brandMetrics = useMemo(() => {
+    return brands.map(b => {
+      const invoice = viewMode === 'all' ? brandAllTimeInvoice(b.contracts) : brandMonthInvoice(b.contracts, bucket);
+      const paid = viewMode === 'all' ? paidAllTime(b.payments) : paidInMonth(b.payments, bucket);
+      const received = receivedFor(b.id);
+      return { id: b.id, name: b.name, invoice, paid, received, margin: received - paid };
+    }).sort((a, b) => b.invoice - a.invoice);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brands, settlements, viewMode, bucket]);
 
-  // Monthly trend (last 6 months)
-  const monthlyTrend = useMemo(() => {
-    const months: { label: string; total: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(year, month - i, 1);
-      const m = d.getMonth();
-      const y = d.getFullYear();
-      const startStr = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-      const endM = m === 11 ? 0 : m + 1;
-      const endY = m === 11 ? y + 1 : y;
-      const endStr = `${endY}-${String(endM + 1).padStart(2, '0')}-01`;
-
-      const total = allData
-        .filter(row => row.signed_at && row.signed_at >= startStr && row.signed_at < endStr)
-        .reduce((s, row) => s + (row.contract_amount || 0), 0);
-
-      months.push({ label: `${MONTH_NAMES[m]} ${y}`, total });
-    }
-    return months;
-  }, [allData, year, month]);
-
-  const maxTrend = Math.max(...monthlyTrend.map(m => m.total), 1);
+  const totals = useMemo(() => brandMetrics.reduce(
+    (acc, b) => ({
+      invoice: acc.invoice + b.invoice,
+      paid: acc.paid + b.paid,
+      received: acc.received + b.received,
+      margin: acc.margin + b.margin,
+    }),
+    { invoice: 0, paid: 0, received: 0, margin: 0 },
+  ), [brandMetrics]);
 
   const prevMonth = () => {
-    if (month === 0) { setMonth(11); setYear(y => y - 1); }
-    else setMonth(m => m - 1);
+    if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1);
   };
-
   const nextMonth = () => {
-    if (month === 11) { setMonth(0); setYear(y => y + 1); }
-    else setMonth(m => m + 1);
-  };
-
-  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
-  const toggleBrand = (name: string) => {
-    setExpandedBrands(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
+    if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1);
   };
 
   if (loading) {
@@ -159,6 +150,8 @@ export default function FinancePage() {
       </div>
     );
   }
+
+  const visibleBrands = brandMetrics.filter(b => b.invoice !== 0 || b.paid !== 0 || b.received !== 0);
 
   return (
     <div className="space-y-6">
@@ -170,141 +163,103 @@ export default function FinancePage() {
             Finance
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Monthly contract amounts by brand
+            Invoice (computed from posted videos), paid to creators, and received from brands — per brand
           </p>
         </div>
 
-        {/* Month selector */}
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={prevMonth}>
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-sm font-medium w-24 text-center">
-            {MONTH_NAMES[month]} {year}
-          </span>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={nextMonth}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+          {/* View toggle */}
+          <div className="flex rounded-md border p-0.5">
+            <button
+              onClick={() => setViewMode('all')}
+              className={cn('px-3 py-1 text-sm rounded', viewMode === 'all' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+            >
+              All-time
+            </button>
+            <button
+              onClick={() => setViewMode('month')}
+              className={cn('px-3 py-1 text-sm rounded', viewMode === 'month' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+            >
+              Monthly
+            </button>
+          </div>
+          {viewMode === 'month' && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={prevMonth}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-medium w-24 text-center">{MONTH_NAMES[month]} {year}</span>
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={nextMonth}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Contracts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{formatCurrency(grandTotal)}</p>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Invoice</CardTitle></CardHeader>
+          <CardContent><p className="text-2xl font-bold">{formatCurrency(totals.invoice)}</p></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Creators Added</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{totalCreators}</p>
-            {totalFree > 0 && <p className="text-xs text-muted-foreground mt-1">{totalFree} free collabs</p>}
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Paid to Creators</CardTitle></CardHeader>
+          <CardContent><p className="text-2xl font-bold">{formatCurrency(totals.paid)}</p></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Avg. Contract</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">
-              {totalCreators - totalFree > 0
-                ? formatCurrency(grandTotal / (totalCreators - totalFree))
-                : '$0'}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">excl. free</p>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Received from Brands</CardTitle></CardHeader>
+          <CardContent><p className="text-2xl font-bold">{formatCurrency(totals.received)}</p></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Margin (received − paid)</CardTitle></CardHeader>
+          <CardContent><p className={cn('text-2xl font-bold', totals.margin >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(totals.margin)}</p></CardContent>
         </Card>
       </div>
 
-      {/* Brand breakdown */}
+      {/* Per-brand table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">By Brand — {MONTH_NAMES[month]} {year}</CardTitle>
+          <CardTitle className="text-base">
+            By Brand — {viewMode === 'all' ? 'All-time' : `${MONTH_NAMES[month]} ${year}`}
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Brand</TableHead>
-                <TableHead className="text-right">Creators</TableHead>
-                <TableHead className="text-right">Free</TableHead>
-                <TableHead className="text-right">Contract Total</TableHead>
-                <TableHead className="text-right">Avg</TableHead>
-                <TableHead className="w-[200px]">Share</TableHead>
+                <TableHead className="text-right">Invoice</TableHead>
+                <TableHead className="text-right">Paid to creators</TableHead>
+                <TableHead className="text-right">Received from brand</TableHead>
+                <TableHead className="text-right">Margin</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {brandSummary.length === 0 ? (
+              {visibleBrands.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No data for this month
-                  </TableCell>
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No data</TableCell>
                 </TableRow>
               ) : (
-                brandSummary.flatMap((brand) => {
-                  const paidCount = brand.count - brand.freeCount;
-                  const avg = paidCount > 0 ? brand.total / paidCount : 0;
-                  const share = grandTotal > 0 ? (brand.total / grandTotal) * 100 : 0;
-                  const isExpanded = expandedBrands.has(brand.name);
-
-                  return [
-                    <TableRow key={brand.name} className="cursor-pointer hover:bg-muted/50" onClick={() => toggleBrand(brand.name)}>
-                      <TableCell className="font-medium">
-                        <span className="mr-1 text-xs text-muted-foreground">{isExpanded ? '▼' : '▶'}</span>
-                        <Link
-                          href={`/admin/finance/${brand.id}`}
-                          className="text-blue-600 hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {brand.name}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-right">{brand.count}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{brand.freeCount || '-'}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(brand.total)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{formatCurrency(avg)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-primary rounded-full" style={{ width: `${share}%` }} />
-                          </div>
-                          <span className="text-xs text-muted-foreground w-10 text-right">{Math.round(share)}%</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>,
-                    ...(isExpanded ? brand.projects.map((proj) => {
-                      const projPaid = proj.count - proj.freeCount;
-                      const projAvg = projPaid > 0 ? proj.total / projPaid : 0;
-                      return (
-                        <TableRow key={`${brand.name}-${proj.name}`} className="bg-muted/30">
-                          <TableCell className="pl-10 text-sm text-muted-foreground">{proj.name}</TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground">{proj.count}</TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground">{proj.freeCount || '-'}</TableCell>
-                          <TableCell className="text-right text-sm">{formatCurrency(proj.total)}</TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground">{formatCurrency(projAvg)}</TableCell>
-                          <TableCell />
-                        </TableRow>
-                      );
-                    }) : []),
-                  ];
-                })
+                visibleBrands.map(b => (
+                  <TableRow key={b.id} className="hover:bg-muted/50">
+                    <TableCell className="font-medium">
+                      <Link href={`/admin/finance/${b.id}`} className="text-blue-600 hover:underline">{b.name}</Link>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(b.invoice)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{formatCurrency(b.paid)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{formatCurrency(b.received)}</TableCell>
+                    <TableCell className={cn('text-right font-medium', b.margin >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(b.margin)}</TableCell>
+                  </TableRow>
+                ))
               )}
-              {brandSummary.length > 0 && (
+              {visibleBrands.length > 0 && (
                 <TableRow className="bg-muted/50 font-medium">
                   <TableCell>Total</TableCell>
-                  <TableCell className="text-right">{totalCreators}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{totalFree || '-'}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(grandTotal)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {totalCreators - totalFree > 0 ? formatCurrency(grandTotal / (totalCreators - totalFree)) : '-'}
-                  </TableCell>
-                  <TableCell />
+                  <TableCell className="text-right">{formatCurrency(totals.invoice)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(totals.paid)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(totals.received)}</TableCell>
+                  <TableCell className={cn('text-right', totals.margin >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(totals.margin)}</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -312,35 +267,10 @@ export default function FinancePage() {
         </CardContent>
       </Card>
 
-      {/* Monthly trend */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
-            6-Month Trend
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {monthlyTrend.map((m) => (
-              <div key={m.label} className="flex items-center gap-3">
-                <span className={cn('text-xs w-16', m.label === `${MONTH_NAMES[month]} ${year}` ? 'font-bold' : 'text-muted-foreground')}>
-                  {m.label}
-                </span>
-                <div className="flex-1 h-6 bg-muted rounded overflow-hidden">
-                  <div
-                    className={cn('h-full rounded', m.label === `${MONTH_NAMES[month]} ${year}` ? 'bg-primary' : 'bg-primary/40')}
-                    style={{ width: `${(m.total / maxTrend) * 100}%` }}
-                  />
-                </div>
-                <span className={cn('text-sm w-20 text-right', m.label === `${MONTH_NAMES[month]} ${year}` ? 'font-bold' : 'text-muted-foreground')}>
-                  {formatCurrency(m.total)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <TrendingUp className="w-3.5 h-3.5" />
+        Invoice = posted approved videos × per-video rate (contracts signed Jun 2026+); pre-cutover contracts by signed month. The three metrics run on independent timelines, so monthly figures are not reconciled — margin is meaningful cumulatively (All-time).
+      </p>
     </div>
   );
 }
