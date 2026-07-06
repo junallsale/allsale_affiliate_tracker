@@ -185,28 +185,31 @@ async function main() {
   // Step 1: Fetch replied creators from campaign
   console.log("Step 1: Fetching replied creators from campaign...");
   const { rows: replies } = await prodPg.query<ReplyRow>(
-    `SELECT DISTINCT ON (COALESCE(tcu.unique_id, COALESCE(cer.email, outbound.to_email)))
-       tcu.unique_id as handle,
-       COALESCE(cer.email, outbound.to_email) as creator_email,
-       outbound.to_name as creator_name,
-       inbound.from_email as reply_email,
-       inbound.from_name as reply_name,
-       regexp_replace(
-         regexp_replace(LEFT(inbound.content, 3000), '<[^>]+>', ' ', 'g'),
-         '\\s+', ' ', 'g'
-       ) as reply_text,
-       inbound.received_at::text
-     FROM brand.email_tracking_events ete
-     JOIN brand.email_messages outbound ON outbound.id = ete.email_message_id
-     JOIN brand.email_messages inbound ON inbound.id = ete.related_email_message_id
-     LEFT JOIN brand.campaign_email_recipients cer
-       ON cer.campaign_id = outbound.campaign_id
-       AND cer.tiktok_creator_info_id = outbound.tiktok_creator_info_id
-     LEFT JOIN brand.tiktok_creator_unique_ids tcu
-       ON tcu.tiktok_creator_info_id::text = outbound.tiktok_creator_info_id
-     WHERE outbound.campaign_id = $1
-     AND ete.event_type = 'REPLIED'
-     ORDER BY COALESCE(tcu.unique_id, COALESCE(cer.email, outbound.to_email)), inbound.received_at DESC`,
+    `SELECT DISTINCT ON (cc.tiktok_creator_info_id)
+       ti.unique_id AS handle,
+       cc.email AS creator_email,
+       ti.nickname AS creator_name,
+       inb.from_email AS reply_email,
+       inb.from_name AS reply_name,
+       COALESCE(
+         regexp_replace(
+           regexp_replace(LEFT(inb.content, 3000), '<[^>]+>', ' ', 'g'),
+           '\\s+', ' ', 'g'
+         ),
+         ''
+       ) AS reply_text,
+       inb.received_at::text
+     FROM brand.campaign_creators cc
+     LEFT JOIN brand.tiktok_creator_info ti ON ti.id = cc.tiktok_creator_info_id
+     LEFT JOIN LATERAL (
+       SELECT content, from_email, from_name, received_at
+       FROM brand.email_messages m
+       WHERE m.direction = 'INBOUND' AND m.tiktok_creator_info_id = cc.tiktok_creator_info_id
+       ORDER BY m.received_at DESC NULLS LAST
+       LIMIT 1
+     ) inb ON true
+     WHERE cc.campaign_id = $1 AND cc.email_check_status = 'Replied' AND cc.deleted_at IS NULL
+     ORDER BY cc.tiktok_creator_info_id`,
     [CAMPAIGN_ID]
   );
 
