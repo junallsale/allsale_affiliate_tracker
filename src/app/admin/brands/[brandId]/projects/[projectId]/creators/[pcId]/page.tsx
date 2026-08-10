@@ -185,6 +185,10 @@ export default function CreatorDetailPage() {
   const [liveHoursInput, setLiveHoursInput] = useState('');
   const [savingLiveHours, setSavingLiveHours] = useState(false);
 
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
   useEffect(() => {
     fetchData();
     checkSuperAdmin();
@@ -471,6 +475,28 @@ export default function CreatorDetailPage() {
     setEditingVideoCount(true);
   };
 
+  const handleSaveName = async () => {
+    const val = nameInput.trim();
+    if (!pcData || !val || val === pcData.creators.name) {
+      setEditingName(false);
+      return;
+    }
+    try {
+      setSavingName(true);
+      const { error } = await supabase
+        .from('creators')
+        .update({ name: val })
+        .eq('id', pcData.creator_id);
+      if (error) throw error;
+      setPcData(prev => prev ? { ...prev, creators: { ...prev.creators, name: val } } as PCFullData : prev);
+      setEditingName(false);
+    } catch (error) {
+      console.error('Error saving creator name:', error);
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const handleSaveVideoCount = async () => {
     try {
       setSavingVideoCount(true);
@@ -724,7 +750,38 @@ export default function CreatorDetailPage() {
                 <span>/</span>
                 <span>{project.name}</span>
               </div>
-              <h1 className="text-2xl font-bold">{creator.name}</h1>
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    className="h-9 text-xl font-bold w-64"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') setEditingName(false);
+                    }}
+                    disabled={savingName}
+                  />
+                  <Button size="icon" className="h-7 w-7 shrink-0" onClick={handleSaveName} disabled={savingName}>
+                    {savingName ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold">{creator.name}</h1>
+                  {!isBrandViewer && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-40 hover:opacity-100"
+                      onClick={() => { setNameInput(creator.name); setEditingName(true); }}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-3 mt-1">
                 {creator.tiktok_handle && (
                   <span className="font-mono text-sm text-muted-foreground">@{creator.tiktok_handle}</span>
