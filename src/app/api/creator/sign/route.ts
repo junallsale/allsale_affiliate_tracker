@@ -155,7 +155,7 @@ async function generateAndSendContract(
     data: pdfBuffer,
   };
 
-  await sendGmailEmail({
+  const sent = await sendGmailEmail({
     refreshToken: senderAccount.gmail_refresh_token,
     from: senderAccount.email,
     to: params.contractEmail,
@@ -169,9 +169,16 @@ async function generateAndSendContract(
     attachments: [attachment],
   });
 
+  // ★ 2026-08-12: Gmail 이 돌려준 thread/message id 를 반드시 남긴다.
+  //   이걸 빼먹어서 계약 확정 메일 60건(전체 outbound 136건 중)이 gmail_thread_id=null 로
+  //   기록됐고, poll-emails 의 스레드 매칭이 그 대화에서는 성립할 수 없었다.
+  //   크리에이터가 이 메일에 답장해도 project_creator 에 붙지 않아 알림이 0건이었다.
   await supabase.from("email_messages").insert({
     project_creator_id: projectCreatorId,
     direction: "outbound",
+    gmail_message_id: sent.messageId,
+    gmail_thread_id: sent.threadId,
+    message_id_header: sent.messageIdHeader,
     from_email: senderAccount.email,
     to_email: params.contractEmail,
     cc_emails: "rosters@allsale.ai",

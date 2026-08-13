@@ -7,7 +7,7 @@
       "maxDuration": 120
     },
     "src/app/api/cron/daily-remind/route.ts": {
-      "maxDuration": 120
+      "maxDuration": 300
     }
   },
   "crons": [

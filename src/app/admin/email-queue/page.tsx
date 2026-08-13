@@ -346,35 +346,39 @@ export default function EmailQueuePage() {
   };
 
   const updateDraftStatus = async (draftId: string, status: 'dismissed' | 'escalated') => {
+    // ★ 슬랙이 실제로 받은 뒤에만 'escalated' 로 바꾼다.
+    //   반대 순서면 발송이 실패해도 목록에서 처리된 것처럼 사라져 다시 손대지 않게 된다.
+    if (status === 'escalated') {
+      const draft = drafts.find(d => d.id === draftId);
+      if (!draft) return;
+
+      try {
+        const res = await fetch('/api/emails/escalate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reason: draft.classification || 'Manual escalation',
+            creatorName: draft.project_creator?.creator?.tiktok_handle || 'Unknown',
+            creatorEmail: draft.email_message?.from_email,
+            projectName: draft.project_creator?.project?.name,
+            emailSnippet: draft.email_message?.body_text,
+          }),
+        });
+        const result = await res.json();
+        if (!result.ok) {
+          alert(`Slack escalation failed: ${result.error || 'Unknown error'}\n대기 상태 그대로 두었습니다. 다시 시도해 주세요.`);
+          return;
+        }
+      } catch (err) {
+        alert(`Slack escalation failed: ${err}\n대기 상태 그대로 두었습니다. 다시 시도해 주세요.`);
+        return;
+      }
+    }
+
     await supabase
       .from('email_drafts')
       .update({ status, reviewed_at: new Date().toISOString() })
       .eq('id', draftId);
-
-    if (status === 'escalated') {
-      const draft = drafts.find(d => d.id === draftId);
-      if (draft) {
-        try {
-          const res = await fetch('/api/emails/escalate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              reason: draft.classification || 'Manual escalation',
-              creatorName: draft.project_creator?.creator?.tiktok_handle || 'Unknown',
-              creatorEmail: draft.email_message?.from_email,
-              projectName: draft.project_creator?.project?.name,
-              emailSnippet: draft.email_message?.body_text,
-            }),
-          });
-          const result = await res.json();
-          if (!result.ok) {
-            alert(`Slack escalation failed: ${result.error || 'Unknown error'}`);
-          }
-        } catch (err) {
-          alert(`Slack escalation failed: ${err}`);
-        }
-      }
-    }
 
     fetchData();
   };
