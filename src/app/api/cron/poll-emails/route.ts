@@ -42,25 +42,6 @@ function extractEmail(raw: string): string {
   return (match ? match[1] : raw).toLowerCase().trim();
 }
 
-/**
- * 제목의 [#XXXXXXXX] 마커로 project_creator 를 찾는다.
- *
- * ★ 2026-08-12: 예전 코드는 `.ilike('id', '<prefix>%')` 였는데, id 는 uuid 컬럼이라
- *   Postgres 가 `operator does not exist: uuid ~~* unknown` (42883) 로 거절한다.
- *   supabase-js 는 이걸 error 로 돌려주고 호출부가 error 를 안 봐서 **항상 미매칭**이었다.
- *   즉 두 전략 중 하나는 처음부터 죽어 있었다.
- *
- *   uuid 는 바이트 순서로 비교되므로 앞 8자리가 같은 구간은
- *   `<prefix>-0000-...` ~ `<prefix>-ffff-...` 범위와 정확히 같다. 캐스팅도 DDL 도 필요 없다.
- */
-function threadRefRange(prefix: string): { from: string; to: string } {
-  const p = prefix.toLowerCase();
-  return {
-    from: `${p}-0000-0000-0000-000000000000`,
-    to: `${p}-ffff-ffff-ffff-ffffffffffff`,
-  };
-}
-
 export const maxDuration = 120;
 
 /** GET /api/cron/poll-emails — Poll inbound emails, classify, create drafts */
@@ -85,7 +66,6 @@ export async function GET(req: NextRequest) {
   let totalProcessed = 0;
   let totalDrafts = 0;
   let totalEscalated = 0;
-  let totalEscalationFailed = 0;
 
   for (const account of accounts) {
     try {
@@ -150,14 +130,12 @@ export async function GET(req: NextRequest) {
         if (!pcMatch && email.subject) {
           const refMatch = email.subject.match(/\[#([A-F0-9]{8})\]/i);
           if (refMatch) {
-            const range = threadRefRange(refMatch[1]);
-            const { data: pcs, error } = await supabase
+            const pcIdPrefix = refMatch[1].toLowerCase();
+            const { data: pcs } = await supabase
               .from('project_creators')
               .select(pcSelect)
-              .gte('id', range.from)
-              .lte('id', range.to)
+              .ilike('id', `${pcIdPrefix}%`)
               .limit(1);
-            if (error) console.error('[poll] thread-ref lookup failed:', error.message);
             if (pcs?.length) pcMatch = pcs[0];
           }
         }
@@ -202,41 +180,32 @@ export async function GET(req: NextRequest) {
         // Skip demo data — never auto-draft or escalate for the demo brand
         if (isDemoBrandId(project?.brand_id)) continue;
 
-        // Handle escalation cases.
-        //
-        // ★ 슬랙이 실제로 받은 뒤에만 escalated 마커를 남긴다.
-        //   반대 순서면 발송이 실패해도 "보냈다"로 기록되어 아무도 모르게 사라진다.
-        //   실패한 건은 escalated=false 로 남아 /admin/email-queue 에서 눈에 띈다.
-        const escalate = async (reason: string, escalationReason: string) => {
-          const result = await escalateToSlack({
-            reason,
+        // Handle escalation cases
+        if (classification === 'contract_modification') {
+          await escalateToSlack({
+            reason: 'Contract Modification Request',
             creatorName: creator?.tiktok_handle || fromEmail,
             creatorEmail: fromEmail,
             projectName: project?.name,
             emailSnippet: email.bodyText?.slice(0, 200),
             adminLink: `${process.env.NEXT_PUBLIC_APP_URL || ''}/admin/email-queue`,
           });
-
-          if (!result.ok) {
-            console.error(`[poll] Slack escalation failed (${escalationReason}) for message ${savedMsg.id}:`, result.error);
-            totalEscalationFailed++;
-            return;
-          }
-
-          await supabase
-            .from('email_messages')
-            .update({ escalated: true, escalation_reason: escalationReason })
-            .eq('id', savedMsg.id);
+          await supabase.from('email_messages').update({ escalated: true, escalation_reason: 'contract_modification' }).eq('id', savedMsg.id);
           totalEscalated++;
-        };
-
-        if (classification === 'contract_modification') {
-          await escalate('Contract Modification Request', 'contract_modification');
           continue;
         }
 
         if (classification === 'shipping_info' && project?.require_shipping_address) {
-          await escalate('Shipping Address — Direct Delivery Needed', 'shipping_direct_delivery');
+          await escalateToSlack({
+            reason: 'Shipping Address — Direct Delivery Needed',
+            creatorName: creator?.tiktok_handle || fromEmail,
+            creatorEmail: fromEmail,
+            projectName: project?.name,
+            emailSnippet: email.bodyText?.slice(0, 200),
+            adminLink: `${process.env.NEXT_PUBLIC_APP_URL || ''}/admin/email-queue`,
+          });
+          await supabase.from('email_messages').update({ escalated: true, escalation_reason: 'shipping_direct_delivery' }).eq('id', savedMsg.id);
+          totalEscalated++;
           continue;
         }
 
@@ -265,6 +234,5 @@ export async function GET(req: NextRequest) {
     processed: totalProcessed,
     drafts: totalDrafts,
     escalated: totalEscalated,
-    escalation_failed: totalEscalationFailed,
   });
 }
