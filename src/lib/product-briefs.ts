@@ -34,52 +34,66 @@ function getServiceClient(): SupabaseClient {
   );
 }
 
+export interface BundleComponent {
+  id: string;
+  name: string;
+  content_guide_url: string | null;
+  position: number;
+}
+
+/** bundle product id → 그 번들의 구성품 목록. */
+export type ComponentsByBundle = Map<string, BundleComponent[]>;
+
 /**
- * Expand assigned products (already loaded from the join) into a flat brief list.
- * Bundles are inlined with their component products (same brand, fetched in one
- * additional query). Deduplicates by product id so the same product never
- * appears twice.
+ * 번들 구성품을 한 번에 읽는다.
+ *
+ * 여러 project_creator 를 한 루프에서 처리할 때(cron) 번들 id 를 전부 모아
+ * 이 함수를 **한 번만** 부르면 건당 왕복이 사라진다.
  */
-export async function buildProductBriefItems(
-  assignedProducts: AssignedProductRef[] | null | undefined,
+export async function fetchBundleComponents(
+  bundleIds: string[],
   client?: SupabaseClient,
-): Promise<BriefItem[]> {
+): Promise<ComponentsByBundle> {
+  const componentsByBundle: ComponentsByBundle = new Map();
+  const ids = [...new Set(bundleIds.filter(Boolean))];
+  if (!ids.length) return componentsByBundle;
+
+  const supabase = client || getServiceClient();
+  // Explicit FK hint required — products has two FKs to product_bundle_components
+  // (bundle_product_id + component_product_id), so PostgREST cannot auto-resolve.
+  const { data: rows } = await supabase
+    .from('product_bundle_components')
+    .select('bundle_product_id, position, component:products!product_bundle_components_component_product_id_fkey(id, name, content_guide_url)')
+    .in('bundle_product_id', ids)
+    .order('position', { ascending: true });
+
+  for (const row of rows || []) {
+    const bundleId = (row as any).bundle_product_id as string;
+    const comp = (row as any).component;
+    if (!bundleId || !comp?.id) continue;
+    if (!componentsByBundle.has(bundleId)) componentsByBundle.set(bundleId, []);
+    componentsByBundle.get(bundleId)!.push({
+      id: comp.id,
+      name: comp.name,
+      content_guide_url: comp.content_guide_url || null,
+      position: (row as any).position ?? 0,
+    });
+  }
+
+  return componentsByBundle;
+}
+
+/**
+ * 이미 읽어둔 데이터만으로 brief 목록을 만든다(DB 조회 없음).
+ * 번들은 구성품을 펼쳐 넣고, product id 로 중복을 제거한다.
+ */
+export function expandProductBriefItems(
+  assignedProducts: AssignedProductRef[] | null | undefined,
+  componentsByBundle: ComponentsByBundle,
+): BriefItem[] {
   const products = (assignedProducts || [])
     .map((p) => p?.product)
     .filter((p): p is NonNullable<AssignedProductRef['product']> => !!p && !!p.id);
-
-  if (!products.length) return [];
-
-  const bundleIds = products.filter((p) => p.is_bundle).map((p) => p.id);
-
-  const componentsByBundle = new Map<
-    string,
-    Array<{ id: string; name: string; content_guide_url: string | null; position: number }>
-  >();
-
-  if (bundleIds.length) {
-    const supabase = client || getServiceClient();
-    // Explicit FK hint required — products has two FKs to product_bundle_components
-    // (bundle_product_id + component_product_id), so PostgREST cannot auto-resolve.
-    const { data: rows } = await supabase
-      .from('product_bundle_components')
-      .select('bundle_product_id, position, component:products!product_bundle_components_component_product_id_fkey(id, name, content_guide_url)')
-      .in('bundle_product_id', bundleIds)
-      .order('position', { ascending: true });
-
-    for (const row of rows || []) {
-      const bundleId = (row as any).bundle_product_id as string;
-      const comp = (row as any).component;
-      if (!bundleId || !comp?.id) continue;
-      if (!componentsByBundle.has(bundleId)) componentsByBundle.set(bundleId, []);
-      componentsByBundle.get(bundleId)!.push({
-        id: comp.id,
-        name: comp.name,
-        content_guide_url: comp.content_guide_url || null,
-        position: (row as any).position ?? 0,
-      });
-    }
-  }
 
   const items: BriefItem[] = [];
   const seen = new Set<string>();
@@ -118,6 +132,23 @@ export async function buildProductBriefItems(
   }
 
   return items;
+}
+
+/**
+ * Expand assigned products (already loaded from the join) into a flat brief list.
+ * 번들이 있을 때만 구성품을 한 번 더 읽는다. 단건 호출용 래퍼.
+ */
+export async function buildProductBriefItems(
+  assignedProducts: AssignedProductRef[] | null | undefined,
+  client?: SupabaseClient,
+): Promise<BriefItem[]> {
+  const bundleIds = (assignedProducts || [])
+    .map((p) => p?.product)
+    .filter((p) => p?.id && p.is_bundle)
+    .map((p) => p!.id);
+
+  const componentsByBundle = await fetchBundleComponents(bundleIds, client);
+  return expandProductBriefItems(assignedProducts, componentsByBundle);
 }
 
 /** True if items include any bundle or more than one product. */
